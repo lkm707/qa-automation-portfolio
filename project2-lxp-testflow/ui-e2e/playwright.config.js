@@ -1,4 +1,4 @@
-// UI E2E 시나리오 1~7 (@S1~@S7). 계정은 리포 루트의 .env 에서 읽는다.
+// UI E2E 시나리오 1~7 (@S1~@S7). 계정은 project2-lxp-testflow/.env(원본은 팀 리포 루트 .env)에서 읽는다.
 const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({

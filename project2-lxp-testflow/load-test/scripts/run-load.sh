@@ -4,7 +4,7 @@
 #   LOAD_ACCOUNTS_CSV=/abs/path/accounts_24.csv → 지정 CSV(예: 특정 계정 1행)로 실행
 # 대상 override(필요할 때만): LOAD_ORG LOAD_COURSE_ID LOAD_LECTURE_ID LOAD_QUIZ_ID LOAD_HOST_ACCOUNT LOAD_HOST_ORG
 set -euo pipefail
-cd "$(dirname "$0")/.."   # part2_load_test 기준
+cd "$(dirname "$0")/.."   # load-test(원본 part2_load_test) 기준
 
 USERS="${1:?단계 인원 수를 주세요 (예: 5 / 10 / 20 / 30)}"
 RAMPUP="${2:-90}"
@@ -13,6 +13,7 @@ RAMPUP="${2:-90}"
 case "$USERS" in
   ''|*[!0-9]*) echo "인원 수는 양의 정수여야 합니다: $USERS"; exit 1 ;;
 esac
+USERS=$((10#$USERS))   # 공개 후 수정: 앞자리 0 제거. printf '%02d' 가 08·09를 8진수 오류로, 010을 step08로 처리하던 문제
 [ "$USERS" -lt 1 ]  && { echo "인원 수는 1 이상이어야 합니다: $USERS"; exit 1; }
 [ "$USERS" -gt 30 ] && { echo "최대 30명까지만 허용합니다: $USERS"; exit 1; }
 
@@ -58,8 +59,12 @@ EXTRA=()
 [ -n "${LOAD_QUIZ_ID:-}" ]      && EXTRA+=("-Jquiz_id=$LOAD_QUIZ_ID")
 [ -n "${LOAD_HOST_ACCOUNT:-}" ] && EXTRA+=("-Jaccount_api=$LOAD_HOST_ACCOUNT")
 [ -n "${LOAD_HOST_ORG:-}" ]     && EXTRA+=("-Jorg_api=$LOAD_HOST_ORG")
-# 계정 CSV 교체(특정 계정만 쓰는 스모크 등). 존재·행 수는 위에서 검사했다. 절대 경로 권장 — 상대 경로는 plans/ 기준으로 풀린다
-[ -n "${LOAD_ACCOUNTS_CSV:-}" ] && EXTRA+=("-Jaccounts_csv=$LOAD_ACCOUNTS_CSV")
+# 계정 CSV 교체(특정 계정만 쓰는 스모크 등). 존재·행 수는 위에서 load-test/ 기준으로 검사했다.
+# 공개 후 수정: JMeter는 상대 경로를 plans/ 기준으로 풀므로, 상대 경로면 ../ 를 붙여 검사한 파일과 같은 파일을 넘긴다
+if [ -n "${LOAD_ACCOUNTS_CSV:-}" ]; then
+  case "$CSV" in /*|[A-Za-z]:*) ;; *) CSV="../$CSV" ;; esac
+  EXTRA+=("-Jaccounts_csv=$CSV")
+fi
 
 # APDEX satisfied 1s / tolerated 4s
 "$JMETER" -n -t plans/exam_cycle.jmx \

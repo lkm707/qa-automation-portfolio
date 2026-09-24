@@ -17,7 +17,7 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from src.pages.main_page import MainPage
 # ══════════════════════════════════════════════════════════════
-# 로그인 기능 상세 검증용 Page Object (tests/login 전용)
+# 로그인 기능 상세 검증용 Page Object (팀 저장소 tests/login 전용, 이 저장소의 tests/test_login_pj.py)
 # 팀 공통 LoginPage(팀 파일, 이 저장소에는 없음)와 역할이 달라 별도 클래스로 유지한다.
 # ══════════════════════════════════════════════════════════════
 

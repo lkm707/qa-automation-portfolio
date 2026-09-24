@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """로그인 자동화 테스트.
 
-셀렉터와 페이지 조작은 src/pages/login_page.py의 LoginUiPage(Page Object)에 있고,
+셀렉터와 페이지 조작은 pages/login_ui_page.py(팀 저장소의 src/pages/login_page.py)의 LoginUiPage(Page Object)에 있고,
 이 파일에는 '무엇을 검증하는지'만 남긴다.
 """
 import logging

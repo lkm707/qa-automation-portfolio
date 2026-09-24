@@ -14,3 +14,11 @@
 **/node_modules/
 __pycache__/
 *.pyc
+# 실행 로그·로컬 리포트
+jmeter.log
+*.log
+.env.*
+!.env.example
+.pytest_cache/
+report.html
+screenshots/

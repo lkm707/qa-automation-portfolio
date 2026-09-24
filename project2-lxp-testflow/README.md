@@ -6,7 +6,7 @@
 
 | 폴더 | 내용 | 작성 |
 |---|---|---|
-| [`api-part3`](api-part3) | Postman·Newman part3 컬렉션(과목·일정·게시판·시험), 순차 실행 스크립트, 산출물 민감정보 치환 | 아래 설명 참고 |
+| [`api-part3`](api-part3) | Postman·Newman part3 컬렉션(과목·일정·게시판·시험·공통), 순차 실행 스크립트, 산출물 민감정보 치환 | 아래 설명 참고 |
 | [`load-test`](load-test) | JMeter 시험 응시 6단계 부하 계획(`exam_cycle.jmx`), JTL 판정·분석 스크립트 5종 | 전부 본인 |
 | [`ui-e2e`](ui-e2e) | Playwright E2E 7개 흐름 10건, 시나리오 문서 | 본인 (폴더 이름을 바꾼 팀원 커밋 몇 줄 포함) |
 

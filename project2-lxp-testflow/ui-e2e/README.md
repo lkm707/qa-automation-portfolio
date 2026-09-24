@@ -6,7 +6,7 @@ API는 쓰지 않는다. 시험 상태도 화면의 "테스트 재응시" 버튼
 
 ## 실행
 
-> 공개본 안내: 원본은 팀 저장소 루트의 `part3_ui_automation/` 기준입니다. 대상 서버가 예시 주소라 그대로는 실행되지 않습니다.
+> 공개본 안내: 원본은 팀 저장소 루트의 `part3_ui_automation/` 기준입니다. 문서·주석의 part2(부하 테스트)는 이 저장소의 `../load-test/`, 추적성 표의 API TC(TC-CO·SC·BD·EX)는 `../api-part3/`에 있습니다. 대상 서버가 예시 주소라 그대로는 실행되지 않습니다.
 
 이 폴더에서 `npm install` → `npm run install:browsers`(최초 1회) → `npm test`(시나리오 1~7, 10건) 순서이며, `npm run report`로 HTML 리포트를 엽니다.
 계정은 `project2-lxp-testflow/.env`(utils/helpers.js 기준)의 `LXP_STUDENT_ID`, `LXP_STUDENT_PW`, `LXP_EDU_ID`, `LXP_EDU_PW`에서 읽고, 비밀번호는 Git에 넣지 않습니다.
@@ -41,7 +41,7 @@ API는 쓰지 않는다. 시험 상태도 화면의 "테스트 재응시" 버튼
 
 모든 테스트는 `test.step`으로 사용자 동작과 검증을 묶어 **메뉴 위치 → 클릭·입력 → 기대 결과** 순의 한국어 단계명을 남긴다.
 HTML 리포트에서 테스트를 선택해 **Test Steps**를 펼치면 단계별 성공·실패와 소요 시간이 보이고, 실패한 단계에는 오류가 표시된다.
-같은 화면의 **Screenshots**, **Videos**에서 화면과 실행 영상을 확인한다. 단계명에는 계정값을 넣지 않으며, 실계정 이메일·비밀번호는 `fill` 대신 `evaluate` 주입(`setValueQuietly`)으로 입력해 리포트 내부 데이터에도 값이 남지 않는다(Playwright는 `fill` 값을 `Fill "값"` 단계 제목으로 기록한다). 같은 이유로 `trace`는 켜지 않는다 — 켜면 evaluate 인자가 trace.zip에 남는다.
+같은 화면의 **Screenshots**, **Videos**에서 화면과 실행 영상을 확인한다. 단계명에는 계정값을 넣지 않으며, 실계정 이메일·비밀번호는 `fill` 대신 `evaluate` 주입(`setValueQuietly`)으로 입력해 단계명 등 리포트의 텍스트 데이터에는 값이 남지 않는다(Playwright는 `fill` 값을 `Fill "값"` 단계 제목으로 기록한다). 같은 이유로 `trace`는 켜지 않는다 — 켜면 evaluate 인자가 trace.zip에 남는다. 단, 영상·스크린샷에는 입력칸에 보이는 이메일이 찍히므로(비밀번호는 마스킹) `playwright-report/`·`test-results/`·`artifacts/videos`는 외부에 공유하기 전에 확인한다.
 
 ## 안전·안정성
 
@@ -50,6 +50,13 @@ HTML 리포트에서 테스트를 선택해 **Test Steps**를 펼치면 단계�
   고정 대기의 유일한 예외는 게시글 저장 전 500ms 정착 대기다(아래 구현 메모).
 - 4번은 같은 학습자의 시험 상태를 바꾸므로 `.locks/`의 파일 잠금으로 같은 PC에서의 중복 실행을 막는다. 다른 머신과의 충돌은 담당자 1명 실행 규칙으로 막는다.
 - 테스트 데이터 제목에는 실행 시각과 프로세스 ID를 붙이고, 실패한 테스트는 `afterEach`에서 새 세션을 열어 UI로 찾아 지운다. 정리 실패도 테스트 실패로 보고한다. 남은 데이터를 찾는 조회(게시글 검색 `/article?filter_title=`, 일정 `/schedule`·`/schedule/ics`·`/schedule/count`)가 4xx/5xx면 화면이 빈 목록처럼 보여도 '없음'으로 보지 않고 실패로 보고한다(dev 실측: 일정 조회 503에도 화면은 '예정된 수업 일정이 없습니다'). UI-TC-07의 삭제 일정 미노출 확인도 같은 감시를 거친다.
+
+## 공개 후 다시 보며 찾은 한계
+
+프로젝트 결과(10건 통과)를 만든 코드라 판정 로직은 고치지 않고 적어 둔다.
+
+- 일정 조회 감시(`watchScheduleLookups`)는 판정 직전까지 도착한 실패 응답만 잡는다. 판정 뒤에 늦게 도착한 실패는 놓칠 수 있어, 보낸 조회 요청이 모두 끝났는지까지 추적하는 것이 맞다.
+- UI-TC-05 삭제 확인(`expectArticleAbsent`)은 검색 결과 문구와 행 0건으로 판정하고 검색 응답의 상태 코드는 보지 않는다. 실패 후 정리(`deleteArticleViaUiIfExists`)처럼 검색 응답을 기다려 상태까지 확인하는 편이 안전하다.
 
 ## 구현 메모
 

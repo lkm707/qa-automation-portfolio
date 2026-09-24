@@ -2,6 +2,9 @@
 /**
  * 리포트 민감정보 치환 — allure-results / htmlextra(reports/*.html) 안의 JWT·Bearer·비밀번호를 가린다.
  *
+ * 공개본 안내: 팀 저장소 구조(part1_api_automation/scripts/) 기준 원본입니다. 아래의 npm test·run.sh·Jenkinsfile·scripts/ 경로는
+ * 팀 저장소 기준이며 이 저장소에는 없습니다. 여기서는 node scrub.js <폴더|파일> 로 실행합니다.
+ *
  * 로컬에서 `npm test` / run.sh 로 만든 리포트도 팀·담당자에게 공유되므로 CI(Jenkinsfile)와 같은 규칙을
  * 로컬 실행 끝에 적용한다. 로그인 요청 본문 {"password": "..."} 이 그대로 실리는 것이 주 대상이다.
  *   - JSON 문자열 값은 이스케이프(\" \\)까지 한 덩어리로 잡아 치환 후에도 JSON 이 깨지지 않게 한다.

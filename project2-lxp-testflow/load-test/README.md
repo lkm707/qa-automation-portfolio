@@ -1,6 +1,6 @@
 # Part 2 — 시험 사이클 부하 테스트 (JMeter)
 
-> 공개본 안내: 팀 저장소의 `part2_load_test/`를 옮긴 것입니다. 서버 주소가 예시 값이라 그대로는 실행되지 않습니다.
+> 공개본 안내: 팀 저장소의 `part2_load_test/`를 옮긴 것입니다. 서버 주소가 예시 값이라 그대로는 실행되지 않습니다. 공개 후 `run-load.sh`의 인자 처리 두 곳(앞자리 0이 붙은 인원 수, 상대 경로 계정 CSV)을 고쳤고, 플랜과 판정 스크립트는 그대로입니다.
 
 학습자를 5→10→20→30명으로 늘리며 시험 응시 사이클의 에러율·Latency·TPS를 재고, 평균 Latency가 1초를 넘기 시작하는 인원(변곡점)을 찾는다.
 교육 과정이 정한 부하 하드리밋과 과제 요구사항(30명 동시 접속에서 에러율 1% 미만, 평균 1초 이내 목표)을 따른다.
@@ -19,18 +19,19 @@
 
 ## 시나리오
 `course/get → test/enter → test/start → quiz/response/add → test/stop → test/reset/by_self` × Loop 3.
-가이드의 4단계에 start를 넣은 것은 start 없이 stop을 호출하면 `in_progress_test`로 실패하기 때문이다(dev 실측).
+교육 과정 가이드의 4단계 흐름에 start를 넣은 것은 start 없이 stop을 호출하면 `in_progress_test`로 실패하기 때문이다(dev 실측).
 모든 단계는 `_result.status == ok`로 검증한다. org-api는 실패도 HTTP 200이라 상태코드만으로는 판정할 수 없다.
 
 ```
 Test Plan  (UDV: org, course_id, lecture_id, quiz_id, account_api, org_api — -J로 override)
 └── Thread Group  min(30, users) · ramp-up · Loop 3
     ├── Kill Switch (JSR223 Listener)
-    ├── HTTP Request Defaults / HTTP Header Manager (Bearer)
+    ├── HTTP Request Defaults / HTTP Header Manager (org)
     ├── Once Only Controller
     │   ├── CSV Data Set Config (accounts.csv, 스레드당 1행)
     │   └── Auth → access_token
     └── Transaction Controller "시험 사이클"
+        ├── HTTP Header Manager (Bearer, 사이클 전용)
         └── 0~5 샘플러, 각각 Assert + Think Time 3~5s
 ```
 CSV Data Set Config는 Once Only 안에 둔다. Thread Group 직속이면 루프마다 행을 소모해 30행으로 30명 × 3루프를 채우지 못한다.
@@ -43,7 +44,7 @@ CSV Data Set Config는 Once Only 안에 둔다. Thread Group 직속이면 루프
 python scripts/compare_dashboards.py reports/step05 reports/step10 reports/step20 reports/step30 --out reports/comparison.md
 python scripts/cycle_timeline.py results/step30.jtl --out reports/step30_cycles.md   # 스레드별 완료 사이클(6단계 순서대로 성공)·동시 진행 구간. --accounts 는 추정 매핑
 ```
-대상을 바꿀 때는 `LOAD_ORG LOAD_COURSE_ID LOAD_LECTURE_ID LOAD_QUIZ_ID LOAD_HOST_ACCOUNT LOAD_HOST_ORG`, 계정 CSV는 `LOAD_ACCOUNTS_CSV`(절대 경로) 환경변수. 특정 계정 하나만 쓰려면 그 행만 담은 CSV를 `data/accounts_<이름>.csv`로 만들어 지정한다(git 제외).
+대상을 바꿀 때는 `LOAD_ORG LOAD_COURSE_ID LOAD_LECTURE_ID LOAD_QUIZ_ID LOAD_HOST_ACCOUNT LOAD_HOST_ORG`, 계정 CSV는 `LOAD_ACCOUNTS_CSV`(절대 경로 또는 load-test 기준 상대 경로) 환경변수. 특정 계정 하나만 쓰려면 그 행만 담은 CSV를 `data/accounts_<이름>.csv`로 만들어 지정한다(git 제외).
 
 ## 결과
 - `results/stepNN.jtl`: 원시 결과. 실행 직후 `summarize_jtl.py`가 설정 인원 기준으로 판정한다 (합격선 에러율 1% 미만·평균 Latency 60초 이내, 목표 1초 이내). 결과에 나타나지 않은 사용자가 있으면 미실행으로 FAIL이다.
