@@ -1,0 +1,16 @@
+# 비밀정보와 실행 산출물은 올리지 않는다
+.env
+**/.env
+**/data/accounts*.csv
+!**/data/accounts.csv.example
+**/.locks/
+**/results/
+**/reports/
+**/allure-results/
+**/allure-report/
+**/test-results/
+**/playwright-report/
+**/artifacts/
+**/node_modules/
+__pycache__/
+*.pyc

@@ -1,0 +1,3388 @@
+{
+  "info": {
+    "name": "Testflow part3 (49 TC, 공개본)",
+    "description": "part3 TC 자동화 컬렉션의 공개본입니다. 과목(CO)·일정(SC)·게시판(BD)·시험(EX) 영역 49 TC.\n원본(52 TC)에는 발견한 권한 결함 2건을 확인하는 TC 3개가 있었지만, 대상 서비스의 조치 여부를 확인하지 못해 재현 정보를 공개본에서 뺐습니다.\n실행 순서: 00 로그인 → 01~05. 계정은 Postman Vault/환경 변수로만 받고, 서버 주소는 예시 값(*.example.invalid)입니다.\n팀 저장소 구조(collections/, environments/, scripts/) 기준이라 이 저장소에서는 그대로 실행되지 않습니다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00_로그인",
+      "item": [
+        {
+          "name": "학습자 로그인",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{account_api}}/login/pw",
+            "description": "응답 access_token을 student_token으로 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"login_id\": \"{{student_id}}\", \"password\": \"{{vault:student_pw}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 새 실행의 첫 로그인에서만 초기화한다. Postman 환경에 남은 이전 중단 값으로 사후 검증이 생략되는 것을 막는다.",
+                  "pm.environment.unset(\"KILL_SWITCH_TRIPPED\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let tok = null;",
+                  "try { tok = pm.response.json().access_token; } catch (e) { tok = null; }",
+                  "pm.test(\"준비 — 학습자 로그인 토큰 확보\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(tok, \"응답에 access_token 없음\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "// 토큰이 없으면 남은 요청 71건이 빈 Bearer 로 서버를 치게 되므로 여기서 실행을 끝낸다 (Safety Design: fail-fast)",
+                  "if (!tok) {",
+                  "    console.error(\"[중단] 학습자 로그인 실패 — 남은 요청을 보내지 않습니다 (계정·비밀번호 확인)\");",
+                  "    pm.execution.setNextRequest(null);",
+                  "} else {",
+                  "    pm.environment.set(\"student_token\", tok);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "교육자 로그인",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{account_api}}/login/pw",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"login_id\": \"{{edu_id}}\", \"password\": \"{{vault:edu_pw}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let tok = null;",
+                  "try { tok = pm.response.json().access_token; } catch (e) { tok = null; }",
+                  "pm.test(\"준비 — 교육자 로그인 토큰 확보\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(tok, \"응답에 access_token 없음\").to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "pm.test(\"준비 — 두 토큰이 서로 달라 계정 혼동 없음\", () => pm.expect(pm.environment.get(\"student_token\")).to.not.eql(tok));",
+                  "if (!tok) {",
+                  "    console.error(\"[중단] 교육자 로그인 실패 — 남은 요청을 보내지 않습니다 (계정·비밀번호 확인)\");",
+                  "    pm.execution.setNextRequest(null);",
+                  "} else {",
+                  "    pm.environment.set(\"educator_token\", tok);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01_CO_과목",
+      "item": [
+        {
+          "name": "S1 과목731 현재값 로드(CO-04/08-01 준비)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/get/?course_id=731",
+            "description": "course/edit 필수 폼 23개를 현재값으로 환경변수에 적재 → CO-04/08-01이 무변경 저장으로 안전 실행"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"준비 — 과목731 현재값 로드\", () => pm.expect(pm.response.json()._result.status).to.eql(\"ok\"));",
+                  "const b = (pm.response.json() || {}).course || {};",
+                  "const REQUIRED = [\"title\", \"code\", \"description\", \"short_description\", \"course_type\", \"class_type\", \"enroll_type\", \"period\", \"price\", \"is_recommended\", \"is_chat_room_disabled\", \"is_post_student_info_visible\", \"is_post_student_email_enabled\", \"is_post_tutor_email_enabled\", \"is_enroll_noti_enabled\", \"completion_info\", \"leaderboard_info\", \"target_audience\", \"objective\", \"faq\", \"class_times\", \"info_summary_visibility_dict\"];",
+                  "const missing = REQUIRED.filter(k => !(k in b));",
+                  "pm.test(\"준비 — 무변경 저장 필수 필드 전부 존재\", () => {",
+                  "    pm.expect(missing, \"누락 필드: \" + missing.join(\",\")).to.eql([]);",
+                  "});",
+                  "const j = (v) => JSON.stringify(v);",
+                  "const B = (v) => v ? \"True\" : \"False\";",
+                  "if (missing.length === 0) {",
+                  "    pm.environment.set(\"co731_title\", b.title);",
+                  "    pm.environment.set(\"co731_code\", b.code || \"\");",
+                  "    pm.environment.set(\"co731_desc\", b.description || \"\");",
+                  "    pm.environment.set(\"co731_short\", b.short_description || \"\");",
+                  "    pm.environment.set(\"co731_type\", String(b.course_type));",
+                  "    pm.environment.set(\"co731_class_type\", String(b.class_type));",
+                  "    pm.environment.set(\"co731_enroll_type\", String(b.enroll_type));",
+                  "    pm.environment.set(\"co731_period\", String(b.period));",
+                  "    pm.environment.set(\"co731_price\", String(b.price));",
+                  "    pm.environment.set(\"co731_recommended\", B(b.is_recommended));",
+                  "    pm.environment.set(\"co731_chat_disabled\", B(b.is_chat_room_disabled));",
+                  "    pm.environment.set(\"co731_info_visible\", B(b.is_post_student_info_visible));",
+                  "    pm.environment.set(\"co731_student_email\", B(b.is_post_student_email_enabled));",
+                  "    pm.environment.set(\"co731_tutor_email\", B(b.is_post_tutor_email_enabled));",
+                  "    pm.environment.set(\"co731_enroll_noti\", B(b.is_enroll_noti_enabled));",
+                  "    pm.environment.set(\"co731_completion\", j(b.completion_info));",
+                  "    pm.environment.set(\"co731_leaderboard\", j(b.leaderboard_info));",
+                  "    pm.environment.set(\"co731_audience\", j(b.target_audience || []));",
+                  "    pm.environment.set(\"co731_objective\", j(b.objective || []));",
+                  "    pm.environment.set(\"co731_faq\", j(b.faq || []));",
+                  "    pm.environment.set(\"co731_class_times\", j(b.class_times || []));",
+                  "    pm.environment.set(\"co731_info_summary\", j(b.info_summary_visibility_dict));",
+                  "    pm.environment.set(\"co731_ready\", \"yes\");   // 스냅샷 완료 — CO-04-01/08-01 실행 허용",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 매 실행 시작 시 가드 플래그 초기화 — 이전 실행의 'yes'가 남아 CO-04-01 가드를 통과하는 것을 막는다",
+                  "pm.environment.set(\"co731_ready\", \"no\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-01-01 [목록 조회] 과목 목록 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{target_classroom_id}}/course?skip=0&count=10",
+            "description": "시나리오 ID: TS-CO-01 / 요구사항 ID: FR-CO-01 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 소속 클래스룸 과목 목록 조회 시, 200과 과목 배열(id·course_id·title·course_type) 반환 검증\n사전조건: 학습자 계정 로그인. 대상 클래스룸에 과목 1건 이상 등록됨\n테스트 절차:\n1. 학습자 로그인→토큰 획득\n2. GET /classroom/{id}/course?skip=0&count=10 호출\n3. status=200, 배열 및 course_id·title 필드 확인\n기대 Status: 200\nResponse 검증: 배열, 항목에 id·course_id·title·course_type\n기대 결과: 과목 목록 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 과목 목록 조회(배열 반환)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\");",
+                  "    if (b.length) pm.expect(b[0]).to.include.keys(\"id\",\"course_id\",\"title\",\"course_type\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-01-02 [필수 파라미터 누락] count 누락 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{target_classroom_id}}/course?skip=0",
+            "description": "시나리오 ID: TS-CO-01 / 요구사항 ID: FR-CO-01 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 필수 쿼리 count를 누락하고 과목 목록 조회 시, 422 유효성 오류 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 학습자 로그인\n2. count 없이 GET 호출(skip=0만)\n3. status=422, detail 오류 확인\n기대 Status: 422\nResponse 검증: detail (검증 오류)\n기대 결과: 필수 파라미터 누락 차단 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 422 — count 파라미터 누락 [실측]\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-01-03 [무토큰 차단] 무토큰 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{target_classroom_id}}/course?skip=0&count=10",
+            "description": "시나리오 ID: TS-CO-01 / 요구사항 ID: FR-CO-01 / 유형: 인증 / 권한: 비로그인 / 우선순위: P1\n요약: 비로그인(무토큰) 상태에서 과목 목록 조회 시, 403과 code=no_access_token 반환 검증\n사전조건: 로그인하지 않은 상태 (Authorization 헤더 없음)\n테스트 절차:\n1. 토큰 없이(Authorization 미설정)\n2. GET /classroom/{id}/course 호출\n3. status=403 차단 확인\n기대 Status: 403\nResponse 검증: code == 'no_access_token' (classroom 규약)\n기대 결과: 비인가 접근 차단 (실측 확정. 401 아님 — 이 서버는 인증 실패도 403)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 no_access_token — 무토큰 과목 목록 조회 [실측]\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"no_access_token\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-01-04 [미존재 ID 방어] 없는 클래스룸 409",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{$randomUUID}}/course?skip=0&count=10",
+            "description": "시나리오 ID: TS-CO-01 / 요구사항 ID: FR-CO-01 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 존재하지 않는 클래스룸 UUID로 과목 목록 조회 시, 409와 code=model_not_found 반환 검증\n사전조건: 학습자 계정 로그인. 존재하지 않는 무작위 UUID 준비\n테스트 절차:\n1. 학습자 로그인\n2. 존재하지 않는 UUID로 GET 호출\n3. status=409, 오류 응답 확인\n기대 Status: 409\nResponse 검증: code == 'model_not_found'\n기대 결과: 미존재 클래스룸 차단 (실측 확정. 관례상 404지만 이 서버는 409)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 model_not_found — 없는 클래스룸 ID로 조회 [실측]\", () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"model_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-01-05 [포맷 위반 방어] UUID 형식 오류 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/not-a-uuid/course?skip=0&count=10",
+            "description": "시나리오 ID: TS-CO-01 / 요구사항 ID: FR-CO-01 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 UUID 형식이 아닌 문자열로 과목 목록 조회 시, 422 유효성 오류 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 학습자 로그인\n2. UUID 형식 아닌 값(not-a-uuid)으로 GET 호출\n3. status=422 확인\n기대 Status: 422\nResponse 검증: detail\n기대 결과: UUID 형식 오류 차단 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 422 — classroom_id UUID 형식 오류 [실측]\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-02-01 [상세 조회] 과목 상세 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{target_classroom_id}}/course/731",
+            "description": "시나리오 ID: TS-CO-02 / 요구사항 ID: FR-CO-02 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 과목 상세(course_id=731) 조회 시, 200과 상세 필드(id·title·status·categories) 반환 검증\n사전조건: 학습자 계정 로그인. 과목 731이 클래스룸에 등록됨\n테스트 절차:\n1. 학습자 로그인\n2. GET /classroom/{id}/course/731 호출\n3. status=200, id·course_id·title·status·categories 확인\n기대 Status: 200\nResponse 검증: id·course_id·title·status·categories\n기대 결과: 과목 상세 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 과목 상세 조회(상세 필드 반환)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.include.keys(\"id\",\"course_id\",\"title\",\"status\",\"categories\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-02-02 [타입 오류 방어] course_id 타입 오류 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{target_classroom_id}}/course/abc",
+            "description": "시나리오 ID: TS-CO-02 / 요구사항 ID: FR-CO-02 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 정수형 course_id 자리에 문자열(abc)로 상세 조회 시, 422 타입 오류 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 학습자 로그인\n2. course_id=abc(숫자 아님)로 GET 호출\n3. status=422 확인\n기대 Status: 422\nResponse 검증: detail\n기대 결과: 타입 불일치 차단 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 422 — course_id 타입 오류 [실측]\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-03-01 [커리큘럼 조회] 커리큘럼 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{course_api}}/course/731/curriculum?elice_course_id=731",
+            "description": "시나리오 ID: TS-CO-03 / 요구사항 ID: FR-CO-03 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 과목 커리큘럼 조회(elice_course_id 쿼리 포함) 시, 200과 커리큘럼 리소스 반환 검증\n사전조건: 학습자 계정 로그인. 과목 731 수강 상태\n테스트 절차:\n1. 학습자 로그인\n2. GET /course/731/curriculum 호출\n3. status=200, curriculum_resource_id·url 확인\n기대 Status: 200\nResponse 검증: curriculum_resource_url\n기대 결과: 커리큘럼 조회 성공 (실측 확정. elice_course_id 누락 시 403)\n구현 메모: elice_course_id 누락 시 403 (실측)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 커리큘럼 조회(elice_course_id 필수) [실측]\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.include.keys(\"curriculum_resource_id\",\"curriculum_resource_url\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-06-01 [과목 집계] 교육자 로그인 상태에서 클래스룸 과목별 진도 집계 조회 검증",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": {
+              "raw": "{{dashboard_api}}/course?classroom_id={{target_classroom_id}}&offset=0&count=10",
+              "host": [
+                "{{dashboard_api}}"
+              ],
+              "path": [
+                "course"
+              ],
+              "query": [
+                {
+                  "key": "classroom_id",
+                  "value": "{{target_classroom_id}}"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "count",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "시나리오 ID: TS-CO-06 / 요구사항 ID: FR-CO-06 / 유형: 정상 / 권한: 교육자\n요약: 교육자 로그인 상태에서 클래스룸 과목별 진도 집계 조회 시 200과 배열 반환 검증\nResponse 검증: 배열이 비어 있지 않고, 각 원소에 course.id, course.title, learning_progress 존재"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 클래스룸 과목별 진도 집계 조회 성공\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"스키마 검증 — 배열 반환 및 course, learning_progress 필드 확인\", () => {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res).to.be.an(\"array\");",
+                  "    pm.expect(res.length, \"클래스에 등록된 과목이 1건 이상이어야 합니다\").to.be.above(0);",
+                  "    res.forEach((item, index) => {",
+                  "        pm.expect(item, `index ${index}: course 누락`).to.have.property(\"course\").that.is.an(\"object\");",
+                  "        pm.expect(item.course).to.have.property(\"id\");",
+                  "        pm.expect(item.course).to.have.property(\"title\").that.is.a(\"string\");",
+                  "        pm.expect(item, `index ${index}: learning_progress 누락`).to.have.property(\"learning_progress\");",
+                  "        const progress = parseFloat(item.learning_progress);",
+                  "        pm.expect(progress, `index ${index}: 진도율 범위 오류`).to.be.at.least(0).and.at.most(100);",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-06-02 [수강생 목록] 학생 목록(교육자)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/member?filter_roles=student&classroom_id={{target_classroom_id}}&skip=0&count=10",
+            "description": "시나리오 ID: TS-CO-06 / 요구사항 ID: FR-CO-06 / 유형: 정상 / 권한: 교육자 / 우선순위: P1\n요약: 교육자 로그인 상태에서 클래스룸 학생 목록 조회 시, 200과 학생 배열(account_id·fullname·email·role) 반환 검증\n사전조건: 교육자 계정 로그인. 수강생 1명 이상\n테스트 절차:\n1. 교육자 로그인\n2. GET /member?filter_roles=student&classroom_id={id} 호출\n3. status=200, account_id·fullname·email·role 확인\n기대 Status: 200\nResponse 검증: 배열, 항목에 account_id·fullname·email·role\n기대 결과: 학생 목록 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 학생 목록 조회\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\");",
+                  "    if (b.length) pm.expect(b[0]).to.include.keys(\"account_id\",\"fullname\",\"email\",\"role\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-08-03 [권한 격리] 학습자→수강생 목록 차단",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/member?filter_roles=student&classroom_id={{target_classroom_id}}&skip=0&count=10",
+            "description": "시나리오 ID: TS-CO-08 / 요구사항 ID: FR-CO-08 / 유형: 권한 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 토큰으로 교육자 전용 수강생 목록(/member) 조회 시, 403과 code=has_no_permission 반환 검증\n사전조건: 학습자 계정 로그인 (course_role=45 순수 Student)\n테스트 절차:\n1. POST https://account-api.example.invalid/login/pw 로 학습자 로그인 → access_token 확보\n2. GET https://classroom-api.example.invalid/member?filter_roles=student&classroom_id=00000000-0000-0000-0000-000000000000&skip=0&count=10 호출\n3. 응답 403, body.code == 'has_no_permission' 확인\n기대 Status: 403\nResponse 검증: code == 'has_no_permission' (classroom 규약)\n기대 결과: 수강생 목록(개인정보) 접근 차단 (실측 확정)\n구현 메모: 교육자 전용 수강생 목록(개인정보) 접근 차단. 기존 대상(v2 progress)은 본인 진도 API로 판명되어 교체(2026-08-28)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 has_no_permission — 학습자→수강생 목록 조회 [실측]\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"has_no_permission\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-09-01 [미존재 ID 방어] 미존재 과목 409",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{target_classroom_id}}/course/99999999",
+            "description": "시나리오 ID: TS-CO-09 / 요구사항 ID: FR-CO-09 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 존재하지 않는 과목 ID(99999999) 조회 시, 409와 code=model_not_found 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 학습자 로그인\n2. GET /classroom/{id}/course/99999999 호출\n3. status=409, 오류 응답 확인\n기대 Status: 409\nResponse 검증: code == 'model_not_found'\n기대 결과: 미존재 과목 차단 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 model_not_found — 미존재 과목 ID로 조회 [실측]\", () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"model_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-05-01 [수업 등록] 수업 등록(교육자·더미)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/lecture/edit/",
+            "description": "시나리오 ID: TS-CO-05 / 요구사항 ID: FR-CO-05 / 유형: 정상 / 권한: 교육자 / 우선순위: P1\n요약: 교육자 로그인 상태에서 신규 수업 등록 시, 200과 lecture_id 반환 검증 (등록 후 삭제 복구)\n사전조건: 교육자 계정 로그인. 대상 과목 731. 더미 제목(__tc_lecture__) 사용\n테스트 절차:\n1. 교육자 로그인 \n2. POST /org/{org}/lecture/edit/ (course_id, lecture_type, title, description, is_opened, is_preview / lecture_id 생략) 호출 \n3. status=200, lecture_id 생성 확인 (더미·복구)\n기대 Status: 200 + _result ok\nResponse 검증: _result.status=='ok', lecture_id 반환\n기대 결과: 수업 등록 성공·복구 완료 (명세 근거·실행 미실측)\n구현 메모: 더미 수업 생성 — CO-05-03에서 삭제 복구",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "lecture_type",
+                  "value": "0",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_lecture__",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "is_opened",
+                  "value": "True",
+                  "type": "text"
+                },
+                {
+                  "key": "is_preview",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 수업 등록(lecture_id 반환)\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.lecture_id).to.be.a(\"number\");",
+                  "});",
+                  "const b2 = pm.response.json();",
+                  "if (b2.lecture_id) pm.environment.set(\"tc_lecture_id\", b2.lecture_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-05-02 [수업 수정] 수업 수정(교육자)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/lecture/edit/",
+            "description": "시나리오 ID: TS-CO-05 / 요구사항 ID: FR-CO-05 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자 로그인 상태에서 기존 수업 수정(lecture_id 포함) 시, 200과 수정 반영 검증\n사전조건: 교육자 계정 로그인. CO-05-01에서 생성한 더미 수업 존재\n테스트 절차:\n1. 교육자 로그인, 대상 수업 존재\n2. POST /lecture/edit/ (lecture_id 포함) 호출\n3. status=200, 수정 반영 확인\n기대 Status: 200 + _result ok\nResponse 검증: _result.status=='ok'\n기대 결과: 수업 수정 성공·반영 확인 (명세 근거·실행 미실측)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "lecture_id",
+                  "value": "{{tc_lecture_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "lecture_type",
+                  "value": "0",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_lecture_v2__",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "is_opened",
+                  "value": "True",
+                  "type": "text"
+                },
+                {
+                  "key": "is_preview",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 수업 수정\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});",
+                  "",
+                  "// ── 사후 확인 (구 \"TC-CO-05-02b [사후 확인] 수정 확인(lecture/get)\"): 별도 요청으로 두면 리포트·시트가 같은 TC를 두 번 세므로 이 요청 안에서 재조회한다 ──",
+                  "setTimeout(function () {",
+                  "    // 본 요청에서 중단된 경우 지연 예약된 사후 조회도 보내지 않는다.",
+                  "    if (pm.environment.get(\"KILL_SWITCH_TRIPPED\") || (pm.response && pm.response.code >= 500)) return;",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get(\"org_api\") + \"/org/academy/lecture/get/?lecture_id=\" + pm.environment.get(\"tc_lecture_id\"),",
+                  "        method: \"GET\",",
+                  "        header: { \"Authorization\": \"Bearer \" + pm.environment.get(\"educator_token\"), \"x-elice-org-name-short\": \"academy\" }",
+                  "    }, function (err, res) {",
+                  "        // 추가 요청은 컬렉션 공통 Test의 pm.response에 포함되지 않으므로 직접 검사한다.",
+                  "        if (res && res.responseTime > 3000) {",
+                  "            console.warn(\"[경고] 사후 확인 응답 \" + res.responseTime + \"ms — \" + pm.info.requestName);",
+                  "        }",
+                  "        if (res && res.code >= 500) {",
+                  "            pm.environment.set(\"KILL_SWITCH_TRIPPED\", String(res.code));",
+                  "            pm.execution.setNextRequest(null);",
+                  "            console.error(\"[KILL SWITCH] 사후 확인 HTTP \" + res.code + \" — \" + pm.info.requestName);",
+                  "            pm.test(\"사후 확인 — 서버 5xx 없음\", function () {",
+                  "                pm.expect(res.code).to.be.below(500);",
+                  "            });",
+                  "            return;",
+                  "        }",
+                  "        let body = null;",
+                  "        try { body = res.json(); } catch (e) { body = null; }",
+                  "        pm.test(\"반영 — 수정한 수업 제목이 재조회에 나타남\", function () {",
+                  "            pm.expect(err, \"사후 확인 조회(lecture/get) 전송 오류\").to.not.be.ok;",
+                  "            pm.expect(res.code).to.eql(200);",
+                  "            pm.expect(body._result.status).to.eql(\"ok\");",
+                  "            pm.expect(body.lecture.title).to.eql(\"__tc_lecture_v2__\");",
+                  "        });",
+                  "    });",
+                  "}, 300);   // 본 요청과의 간격(호출 빈도 상한)"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-08-02 [역할 권한 차단] 학습자→수업 등록 차단",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/lecture/edit/",
+            "description": "시나리오 ID: TS-CO-08 / 요구사항 ID: FR-CO-08 / 유형: 권한 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 토큰으로 교육자 전용 수업 등록 호출 시, 200+fail_code=insufficient_permission 거부 검증\n사전조건: 학습자 계정 로그인. CO-05-01과 동일한 유효 form-data(lecture_id 생략)\n테스트 절차:\n1. 학습자 로그인(교육자 아님)\n2. POST /org/{org}/lecture/edit/ (정상 등록 파라미터) 호출\n3. status=200+fail_code=insufficient_permission 또는 403 차단 확인\n기대 Status: 200 + fail_code\nResponse 검증: fail_code == 'insufficient_permission' (org 규약)\n기대 결과: 수업 등록 차단 (명세 근거·실행 미실측)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "lecture_type",
+                  "value": "0",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_perm__",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "is_opened",
+                  "value": "True",
+                  "type": "text"
+                },
+                {
+                  "key": "is_preview",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 insufficient_permission — 학습자→수업 등록\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"insufficient_permission\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-05-04 [자료 등록] 노트 자료 등록(교육자·더미)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/material_note/edit/",
+            "description": "시나리오 ID: TS-CO-05 / 요구사항 ID: FR-CO-05 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자 로그인 상태에서 수업 자료(노트) 등록 시, 200과 material_note_id 반환 검증\n사전조건: 교육자 계정 로그인. 더미 수업 준비. 등록 후 해당 차시 삭제로 복구\n테스트 절차:\n1. 교육자 로그인\n2. 자료 유형별 material_* edit/delete 호출\n3. status=200, material 반영 확인\n기대 Status: 200 + _result ok\nResponse 검증: material_note_id 반환\n기대 결과: 노트 자료 등록 성공 (명세 근거). quiz/exercise 등은 동일 패턴 별도 TC\n구현 메모: 더미 수업에 노트 등록 — 수업 삭제로 일괄 복구",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "lecture_id",
+                  "value": "{{tc_lecture_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_note__",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "content",
+                  "value": "테스트",
+                  "type": "text"
+                },
+                {
+                  "key": "is_opened",
+                  "value": "True",
+                  "type": "text"
+                },
+                {
+                  "key": "is_for_stats",
+                  "value": "False",
+                  "type": "text"
+                },
+                {
+                  "key": "locator_types",
+                  "value": "0",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 노트 자료 등록\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.material_note_id).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-05-03 [수업 삭제] 수업 삭제(복구)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/lecture/delete/",
+            "description": "시나리오 ID: TS-CO-05 / 요구사항 ID: FR-CO-05 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자 로그인 상태에서 수업 삭제 시, 200과 _result.status=ok 반환 검증\n사전조건: 교육자 계정 로그인. 삭제 대상은 CO-05-01의 더미 수업만\n테스트 절차:\n1. 교육자 로그인, 대상 수업 존재\n2. POST /lecture/delete/ (lecture_id) 호출\n3. status=200, 삭제 확인\n기대 Status: 200 + _result ok\nResponse 검증: _result.status=='ok'\n기대 결과: 더미 수업 삭제 성공 (존재 실측·실행 미실측)\n구현 메모: 명세 누락 API — 존재 실측 확인. 더미 수업 정리",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "lecture_id",
+                  "value": "{{tc_lecture_id}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"원복 — 더미 수업 삭제(상태 200)\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-04-01 [과목 수정] 과목 수정(교육자·무변경 저장)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/edit/",
+            "description": "시나리오 ID: TS-CO-04 / 요구사항 ID: FR-CO-04 / 유형: 정상 / 권한: 교육자 / 우선순위: P1\n요약: 교육자 로그인 상태에서 과목 정보 수정(현재값 무변경 저장) 시, 200과 _result.status=ok 반환 검증\n사전조건: 교육자 계정 로그인. course/get으로 과목 731 현재값을 먼저 조회해 확보(값 변경 없이 그대로 재전송)\n테스트 절차:\n1. 교육자 로그인\n2. POST /org/{org}/course/edit/ (course_id + 필수 23필드 무변경 저장) 호출\n3. status=200, _result.status=ok 확인 (더미·복구)\n기대 Status: 200 + _result ok\nResponse 검증: _result.status == 'ok'\n기대 결과: 과목 수정 성공 (실측 확정). 무변경 저장이라 복구 불필요\n구현 메모: course/get 현재값 그대로 되돌려 저장(값 무변경=복구 불필요). 전체 필수 폼 23개 확보(실측 2026-08-28)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "{{co731_title}}",
+                  "type": "text"
+                },
+                {
+                  "key": "code",
+                  "value": "{{co731_code}}",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "{{co731_desc}}",
+                  "type": "text"
+                },
+                {
+                  "key": "short_description",
+                  "value": "{{co731_short}}",
+                  "type": "text"
+                },
+                {
+                  "key": "course_type",
+                  "value": "{{co731_type}}",
+                  "type": "text"
+                },
+                {
+                  "key": "class_type",
+                  "value": "{{co731_class_type}}",
+                  "type": "text"
+                },
+                {
+                  "key": "enroll_type",
+                  "value": "{{co731_enroll_type}}",
+                  "type": "text"
+                },
+                {
+                  "key": "period",
+                  "value": "{{co731_period}}",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "{{co731_price}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_recommended",
+                  "value": "{{co731_recommended}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_chat_room_disabled",
+                  "value": "{{co731_chat_disabled}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_post_student_info_visible",
+                  "value": "{{co731_info_visible}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_post_student_email_enabled",
+                  "value": "{{co731_student_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_post_tutor_email_enabled",
+                  "value": "{{co731_tutor_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_enroll_noti_enabled",
+                  "value": "{{co731_enroll_noti}}",
+                  "type": "text"
+                },
+                {
+                  "key": "completion_info",
+                  "value": "{{co731_completion}}",
+                  "type": "text"
+                },
+                {
+                  "key": "leaderboard_info",
+                  "value": "{{co731_leaderboard}}",
+                  "type": "text"
+                },
+                {
+                  "key": "target_audience",
+                  "value": "{{co731_audience}}",
+                  "type": "text"
+                },
+                {
+                  "key": "objective",
+                  "value": "{{co731_objective}}",
+                  "type": "text"
+                },
+                {
+                  "key": "faq",
+                  "value": "{{co731_faq}}",
+                  "type": "text"
+                },
+                {
+                  "key": "class_times",
+                  "value": "{{co731_class_times}}",
+                  "type": "text"
+                },
+                {
+                  "key": "info_summary_visibility_dict",
+                  "value": "{{co731_info_summary}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 과목 무변경 저장 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 안전 가드: S1 스냅샷이 없으면 {{co731_*}} 리터럴이 공유 과목 731에 저장되므로 실행하지 않는다",
+                  "if (pm.environment.get(\"co731_ready\") !== \"yes\") {",
+                  "    console.error(\"[가드] S1 과목731 스냅샷 미완료 — 과목 데이터 보호를 위해 이 요청을 건너뜁니다\");",
+                  "    pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-08-01 [역할 권한 차단] 학습자→과목 수정 차단",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/edit/",
+            "description": "시나리오 ID: TS-CO-08 / 요구사항 ID: FR-CO-08 / 유형: 권한 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 토큰으로 교육자 전용 과목 수정 호출 시, 200+fail_code=insufficient_permission_to_update 거부 검증\n사전조건: 학습자 계정 로그인. CO-04-01의 유효 전체 폼 확보(불완전 폼이면 권한검사 전 invalid_parameter)\n테스트 절차:\n1. 학습자 로그인(교육자 아님)\n2. POST /org/{org}/course/edit/ (정상 편집 파라미터) 호출\n3. status=200 +insufficient_permission_to_update 차단 확인\n기대 Status: 200 + fail_code\nResponse 검증: fail_code == 'insufficient_permission_to_update' (org 규약)\n기대 결과: 과목 수정 차단 (실측 확정)\n구현 메모: 유효 전체 폼으로 권한검사 도달 → HeadTA 이상 요구 확인(실측)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "{{co731_title}}",
+                  "type": "text"
+                },
+                {
+                  "key": "code",
+                  "value": "{{co731_code}}",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "{{co731_desc}}",
+                  "type": "text"
+                },
+                {
+                  "key": "short_description",
+                  "value": "{{co731_short}}",
+                  "type": "text"
+                },
+                {
+                  "key": "course_type",
+                  "value": "{{co731_type}}",
+                  "type": "text"
+                },
+                {
+                  "key": "class_type",
+                  "value": "{{co731_class_type}}",
+                  "type": "text"
+                },
+                {
+                  "key": "enroll_type",
+                  "value": "{{co731_enroll_type}}",
+                  "type": "text"
+                },
+                {
+                  "key": "period",
+                  "value": "{{co731_period}}",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "{{co731_price}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_recommended",
+                  "value": "{{co731_recommended}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_chat_room_disabled",
+                  "value": "{{co731_chat_disabled}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_post_student_info_visible",
+                  "value": "{{co731_info_visible}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_post_student_email_enabled",
+                  "value": "{{co731_student_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_post_tutor_email_enabled",
+                  "value": "{{co731_tutor_email}}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_enroll_noti_enabled",
+                  "value": "{{co731_enroll_noti}}",
+                  "type": "text"
+                },
+                {
+                  "key": "completion_info",
+                  "value": "{{co731_completion}}",
+                  "type": "text"
+                },
+                {
+                  "key": "leaderboard_info",
+                  "value": "{{co731_leaderboard}}",
+                  "type": "text"
+                },
+                {
+                  "key": "target_audience",
+                  "value": "{{co731_audience}}",
+                  "type": "text"
+                },
+                {
+                  "key": "objective",
+                  "value": "{{co731_objective}}",
+                  "type": "text"
+                },
+                {
+                  "key": "faq",
+                  "value": "{{co731_faq}}",
+                  "type": "text"
+                },
+                {
+                  "key": "class_times",
+                  "value": "{{co731_class_times}}",
+                  "type": "text"
+                },
+                {
+                  "key": "info_summary_visibility_dict",
+                  "value": "{{co731_info_summary}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 code/detail — 권한 부족 · 학습자→과목 수정 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"insufficient_permission_to_update\");",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 안전 가드: S1 스냅샷이 없으면 {{co731_*}} 리터럴이 공유 과목 731에 저장되므로 실행하지 않는다",
+                  "if (pm.environment.get(\"co731_ready\") !== \"yes\") {",
+                  "    console.error(\"[가드] S1 과목731 스냅샷 미완료 — 과목 데이터 보호를 위해 이 요청을 건너뜁니다\");",
+                  "    pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "S1b 과목731 무변경 확인(CO-04-01·08-01 사후)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/get/?course_id=731",
+            "description": "공유 과목 731 보호 — 무변경 저장이 실제로 값을 바꾸지 않았는지 사후 검증"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"원복 확인 — 과목731 재조회\", () => pm.expect(pm.response.json()._result.status).to.eql(\"ok\"));",
+                  "pm.test(\"원복 확인 — 과목731 값이 S1 스냅샷과 동일\", () => {",
+                  "    const b = pm.response.json().course;",
+                  "    const S = (k) => String(pm.environment.get(k));",
+                  "    pm.expect(String(b.title)).to.eql(S(\"co731_title\"));",
+                  "    pm.expect(String(b.code || \"\")).to.eql(S(\"co731_code\"));",
+                  "    pm.expect(String(b.description || \"\")).to.eql(S(\"co731_desc\"));",
+                  "    pm.expect(String(b.short_description || \"\")).to.eql(S(\"co731_short\"));",
+                  "    pm.expect(String(b.course_type)).to.eql(S(\"co731_type\"));",
+                  "    pm.expect(String(b.class_type)).to.eql(S(\"co731_class_type\"));",
+                  "    pm.expect(String(b.enroll_type)).to.eql(S(\"co731_enroll_type\"));",
+                  "    pm.expect(String(b.period)).to.eql(S(\"co731_period\"));",
+                  "    pm.expect(String(b.price)).to.eql(S(\"co731_price\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-CO-07-01 [리포트 발급] 클래스 리포트(교육자)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/leaderboard/section/report/?course_id=731&score_type=0",
+            "description": "시나리오 ID: TS-CO-07 / 요구사항 ID: FR-CO-07 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자 로그인 상태에서 클래스 리포트 다운로드 요청 시, 200과 download_token 반환 검증\n사전조건: 교육자 계정 로그인. 과목 731\n테스트 절차:\n1. 교육자 로그인 \n2. GET /org/{org}/leaderboard/section/report/?course_id=731&score_type=0 호출 \n3. status=200, _result.status=ok, download_token 반환 확인\n기대 Status: 200 + _result ok\nResponse 검증: download_token 반환\n기대 결과: 리포트 다운로드 토큰 발급 성공 (실측 확정)\n구현 메모: 리포트 = leaderboard/section/report, download_token 반환(실측). score_type: 0=Public 1=Private 2=Final"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 클래스 리포트 조회 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.download_token).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02_SC_일정",
+      "item": [
+        {
+          "name": "TC-SC-01-01 [일정 목록] 일정 목록 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/schedule?classroom_id={{target_classroom_id}}&dt_start_ge=2026-08-01T00:00:00.000Z&dt_start_le=2026-10-01T00:00:00.000Z&count=40",
+            "description": "시나리오 ID: TS-SC-01 / 요구사항 ID: FR-SC-01 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 기간 지정 일정 목록 조회 시, 200과 일정 배열(id·summary·dt_start) 반환 검증\n사전조건: 학습자 계정 로그인. 조회 기간 내 일정 존재\n테스트 절차:\n1. 학습자 로그인\n2. GET /schedule (classroom_id, dt_start_ge, dt_start_le, count) 호출\n3. status=200, id·summary·dt_start·lecture_title 확인\n기대 Status: 200\nResponse 검증: 배열, 항목에 id·summary·dt_start·lecture_title\n기대 결과: 일정 목록 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 일정 목록 조회(항목 필드 확인)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\");",
+                  "    if (b.length) pm.expect(b[0]).to.include.keys(\"id\",\"summary\",\"dt_start\",\"lecture_title\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-01-02 [필수 파라미터 누락] classroom_id 누락 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/schedule?dt_start_ge=2026-08-01T00:00:00.000Z&dt_start_le=2026-10-01T00:00:00.000Z&count=10",
+            "description": "시나리오 ID: TS-SC-01 / 요구사항 ID: FR-SC-01 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 필수 쿼리 classroom_id를 누락하고 일정 조회 시, 422 유효성 오류 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 학습자 로그인\n2. classroom_id 없이 GET /schedule 호출\n3. status=422 확인\n기대 Status: 422\nResponse 검증: detail\n기대 결과: 필수 누락 차단 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 422 — classroom_id 쿼리 누락 [실측]\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-01-03 [포맷 위반 방어] 날짜 형식 오류 422",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/schedule?classroom_id={{target_classroom_id}}&dt_start_ge=bad-date&dt_start_le=2026-10-01T00:00:00.000Z&count=10",
+            "description": "시나리오 ID: TS-SC-01 / 요구사항 ID: FR-SC-01 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 dt_start_ge에 잘못된 날짜 형식 전달 시, 422 유효성 오류 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 학습자 로그인\n2. dt_start_ge=bad(잘못된 날짜)로 GET 호출\n3. status=422 확인\n기대 Status: 422\nResponse 검증: detail\n기대 결과: 날짜 형식 오류 차단 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 422 — 날짜 형식 오류 [실측]\", () => {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-02-01 [연결 과목 조회] 연결 과목 조회(759)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/get/?course_id=759",
+            "description": "시나리오 ID: TS-SC-02 / 요구사항 ID: FR-SC-02 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 일정 연결 과목 정보 조회(course_id=759) 시, 200과 course 객체 반환 검증\n사전조건: 학습자 계정 로그인. 과목 759 접근 가능\n테스트 절차:\n1. 학습자 로그인\n2. GET /org/{org}/course/get/?course_id=759 호출\n3. status=200, course·course_sections 확인\n기대 Status: 200 + _result ok\nResponse 검증: course·course_sections·course_role\n기대 결과: 과목 정보 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 일정 연결 과목(759) 조회 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b).to.include.keys(\"course\",\"course_sections\",\"course_role\");",
+                  "    pm.expect(b.course.id).to.eql(759);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-03-01 [일정 생성] 일정 등록(교육자·더미)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/schedule",
+            "description": "시나리오 ID: TS-SC-03 / 요구사항 ID: FR-SC-03 / 유형: 정상 / 권한: 교육자 / 우선순위: P1\n요약: 교육자 로그인 상태에서 유효 형식으로 수업 일정 등록 시, 200(빈 객체)과 재조회로 생성 확인 (등록 후 삭제 복구)\n사전조건: 교육자 계정 로그인. 더미 제목(__tc_schedule__) 사용, 테스트 후 삭제\n테스트 절차:\n1. 교육자 로그인 \n2. POST /schedule (classroom_id, summary, dt_start, dt_end, is_all_day) 호출 \n3. status=200, 빈 객체 반환 → GET 재조회로 생성 확인 (생성 후 삭제 복구)\n기대 Status: 200\nResponse 검증: 빈 객체 {} → GET 재조회로 생성 확인\n기대 결과: 일정 등록 성공·재조회 확인·복구 완료 (실측 확정)\n구현 메모: 실측 캡처 형식(dt는 날짜만). 다음 요청에서 생성 확인·ID 확보",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"classroom_id\": \"{{target_classroom_id}}\", \"summary\": \"__tc_schedule__\", \"dt_start\": \"2026-09-28\", \"dt_end\": \"2026-09-28\", \"is_all_day\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 일정 등록(응답 빈 객체) [실측]\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// ── 사후 확인 (구 \"TC-SC-03-01b [사후 확인] 생성 확인 + ID 저장\"): 별도 요청으로 두면 리포트·시트가 같은 TC를 두 번 세므로 이 요청 안에서 재조회한다 ──",
+                  "setTimeout(function () {",
+                  "    // 본 요청에서 중단된 경우 지연 예약된 사후 조회도 보내지 않는다.",
+                  "    if (pm.environment.get(\"KILL_SWITCH_TRIPPED\") || (pm.response && pm.response.code >= 500)) return;",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get(\"classroom_api\") + \"/schedule?classroom_id=\" + pm.environment.get(\"target_classroom_id\") + \"&dt_start_ge=2026-09-27T00:00:00.000Z&dt_start_le=2026-09-30T00:00:00.000Z&count=40\",",
+                  "        method: \"GET\",",
+                  "        header: { \"Authorization\": \"Bearer \" + pm.environment.get(\"educator_token\"), \"x-elice-org-name-short\": \"academy\" }",
+                  "    }, function (err, res) {",
+                  "        // 추가 요청은 컬렉션 공통 Test의 pm.response에 포함되지 않으므로 직접 검사한다.",
+                  "        if (res && res.responseTime > 3000) {",
+                  "            console.warn(\"[경고] 사후 확인 응답 \" + res.responseTime + \"ms — \" + pm.info.requestName);",
+                  "        }",
+                  "        if (res && res.code >= 500) {",
+                  "            pm.environment.set(\"KILL_SWITCH_TRIPPED\", String(res.code));",
+                  "            pm.execution.setNextRequest(null);",
+                  "            console.error(\"[KILL SWITCH] 사후 확인 HTTP \" + res.code + \" — \" + pm.info.requestName);",
+                  "            pm.test(\"사후 확인 — 서버 5xx 없음\", function () {",
+                  "                pm.expect(res.code).to.be.below(500);",
+                  "            });",
+                  "            return;",
+                  "        }",
+                  "        let body = null;",
+                  "        try { body = res.json(); } catch (e) { body = null; }",
+                  "        const created = Array.isArray(body) ? body.find(function (s) { return s.summary === \"__tc_schedule__\"; }) : undefined;",
+                  "        pm.test(\"반영 — 등록한 일정이 목록에 나타남\", function () {",
+                  "            pm.expect(err, \"사후 확인 조회(schedule 목록) 전송 오류\").to.not.be.ok;",
+                  "            pm.expect(res.code).to.eql(200);",
+                  "            pm.expect(body, \"목록 응답이 배열이 아님\").to.be.an(\"array\");",
+                  "            pm.expect(created).to.not.be.undefined;",
+                  "        });",
+                  "        if (created) pm.environment.set(\"tc_schedule_id\", created.id);   // SC-03-02/03이 이 ID를 쓴다",
+                  "    });",
+                  "}, 300);   // 본 요청과의 간격(호출 빈도 상한)"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-03-02 [일정 수정] 일정 수정(PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/schedule/{{tc_schedule_id}}",
+            "description": "시나리오 ID: TS-SC-03 / 요구사항 ID: FR-SC-03 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자 로그인 상태에서 기존 일정 수정(PATCH) 시, 200과 재조회로 수정 반영 검증\n사전조건: 교육자 계정 로그인. SC-03-01의 더미 일정 존재\n테스트 절차:\n1. 교육자 로그인, 대상 일정 존재\n2. PATCH /schedule/{schedule_id} 호출\n3. status=200, 수정 반영 확인\n기대 Status: 200\nResponse 검증: 수정 반영\n기대 결과: 일정 수정 성공·반영 확인 (명세 근거·실행 미실측)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"classroom_id\": \"{{target_classroom_id}}\", \"summary\": \"__tc_schedule_v2__\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 일정 수정(PATCH)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// ── 사후 확인 (구 \"TC-SC-03-02b [사후 확인] 수정 확인\"): 별도 요청으로 두면 리포트·시트가 같은 TC를 두 번 세므로 이 요청 안에서 재조회한다 ──",
+                  "setTimeout(function () {",
+                  "    // 본 요청에서 중단된 경우 지연 예약된 사후 조회도 보내지 않는다.",
+                  "    if (pm.environment.get(\"KILL_SWITCH_TRIPPED\") || (pm.response && pm.response.code >= 500)) return;",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get(\"classroom_api\") + \"/schedule?classroom_id=\" + pm.environment.get(\"target_classroom_id\") + \"&dt_start_ge=2026-09-27T00:00:00.000Z&dt_start_le=2026-09-30T00:00:00.000Z&count=40\",",
+                  "        method: \"GET\",",
+                  "        header: { \"Authorization\": \"Bearer \" + pm.environment.get(\"educator_token\"), \"x-elice-org-name-short\": \"academy\" }",
+                  "    }, function (err, res) {",
+                  "        // 추가 요청은 컬렉션 공통 Test의 pm.response에 포함되지 않으므로 직접 검사한다.",
+                  "        if (res && res.responseTime > 3000) {",
+                  "            console.warn(\"[경고] 사후 확인 응답 \" + res.responseTime + \"ms — \" + pm.info.requestName);",
+                  "        }",
+                  "        if (res && res.code >= 500) {",
+                  "            pm.environment.set(\"KILL_SWITCH_TRIPPED\", String(res.code));",
+                  "            pm.execution.setNextRequest(null);",
+                  "            console.error(\"[KILL SWITCH] 사후 확인 HTTP \" + res.code + \" — \" + pm.info.requestName);",
+                  "            pm.test(\"사후 확인 — 서버 5xx 없음\", function () {",
+                  "                pm.expect(res.code).to.be.below(500);",
+                  "            });",
+                  "            return;",
+                  "        }",
+                  "        let body = null;",
+                  "        try { body = res.json(); } catch (e) { body = null; }",
+                  "        const sid = String(pm.environment.get(\"tc_schedule_id\"));",
+                  "        const edited = Array.isArray(body) ? body.find(function (s) { return String(s.id) === sid; }) : undefined;",
+                  "        pm.test(\"반영 — 수정한 일정 제목이 재조회에 나타남\", function () {",
+                  "            pm.expect(err, \"사후 확인 조회(schedule 목록) 전송 오류\").to.not.be.ok;",
+                  "            pm.expect(res.code).to.eql(200);",
+                  "            pm.expect(edited, \"tc_schedule_id 일정이 목록에 없음\").to.not.be.undefined;",
+                  "            pm.expect(edited.summary).to.eql(\"__tc_schedule_v2__\");",
+                  "        });",
+                  "    });",
+                  "}, 300);   // 본 요청과의 간격(호출 빈도 상한)"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-05-01 [역할 권한 차단] 학습자→일정 등록 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/schedule",
+            "description": "시나리오 ID: TS-SC-05 / 요구사항 ID: FR-SC-05 / 유형: 권한 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 토큰으로 교육자 전용 일정 등록 호출 시, 403과 code=has_no_permission 반환 검증\n사전조건: 학습자 계정 로그인. SC-03-01과 동일한 유효 JSON 사용\n테스트 절차:\n1. 학습자 로그인(교육자 아님)\n2. POST /schedule (정상 스케줄 데이터) 호출\n3. status=403 차단 확인\n기대 Status: 403\nResponse 검증: code == 'has_no_permission' (classroom 규약)\n기대 결과: 일정 등록 차단 (실측 확정)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"classroom_id\": \"{{target_classroom_id}}\", \"summary\": \"__tc_perm__\", \"dt_start\": \"2026-09-28\", \"dt_end\": \"2026-09-28\", \"is_all_day\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 has_no_permission — 학습자→일정 등록 [실측]\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "    pm.expect(pm.response.json().code).to.eql(\"has_no_permission\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-03-03 [일정 삭제] 일정 삭제(복구)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/schedule/{{tc_schedule_id}}",
+            "description": "시나리오 ID: TS-SC-03 / 요구사항 ID: FR-SC-03 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자 로그인 상태에서 더미 일정 삭제(DELETE) 시, 200과 재조회로 삭제 확인 검증\n사전조건: 교육자 계정 로그인. 삭제 대상은 더미 일정만\n테스트 절차:\n1. 교육자 로그인, 대상 일정 존재\n2. DELETE /schedule/{schedule_id} (classroom_id) 호출\n3. status=200, 삭제 확인\n기대 Status: 200\nResponse 검증: 삭제 성공\n기대 결과: 일정 삭제 성공 (실측 확정)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"classroom_id\": \"{{target_classroom_id}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"원복 — 더미 일정 삭제(상태 200) [실측]\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// ── 사후 확인 (구 \"TC-SC-03-03b [사후 확인] 삭제 확인\"): 별도 요청으로 두면 리포트·시트가 같은 TC를 두 번 세므로 이 요청 안에서 재조회한다 ──",
+                  "setTimeout(function () {",
+                  "    // 본 요청에서 중단된 경우 지연 예약된 사후 조회도 보내지 않는다.",
+                  "    if (pm.environment.get(\"KILL_SWITCH_TRIPPED\") || (pm.response && pm.response.code >= 500)) return;",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get(\"classroom_api\") + \"/schedule?classroom_id=\" + pm.environment.get(\"target_classroom_id\") + \"&dt_start_ge=2026-09-27T00:00:00.000Z&dt_start_le=2026-09-30T00:00:00.000Z&count=40\",",
+                  "        method: \"GET\",",
+                  "        header: { \"Authorization\": \"Bearer \" + pm.environment.get(\"educator_token\"), \"x-elice-org-name-short\": \"academy\" }",
+                  "    }, function (err, res) {",
+                  "        // 추가 요청은 컬렉션 공통 Test의 pm.response에 포함되지 않으므로 직접 검사한다.",
+                  "        if (res && res.responseTime > 3000) {",
+                  "            console.warn(\"[경고] 사후 확인 응답 \" + res.responseTime + \"ms — \" + pm.info.requestName);",
+                  "        }",
+                  "        if (res && res.code >= 500) {",
+                  "            pm.environment.set(\"KILL_SWITCH_TRIPPED\", String(res.code));",
+                  "            pm.execution.setNextRequest(null);",
+                  "            console.error(\"[KILL SWITCH] 사후 확인 HTTP \" + res.code + \" — \" + pm.info.requestName);",
+                  "            pm.test(\"사후 확인 — 서버 5xx 없음\", function () {",
+                  "                pm.expect(res.code).to.be.below(500);",
+                  "            });",
+                  "            return;",
+                  "        }",
+                  "        let body = null;",
+                  "        try { body = res.json(); } catch (e) { body = null; }",
+                  "        const remain = Array.isArray(body) ? body.filter(function (s) { return (s.summary || \"\").startsWith(\"__tc_schedule\"); }) : null;",
+                  "        pm.test(\"원복 확인 — 테스트 일정이 목록에 없음\", function () {",
+                  "            pm.expect(err, \"사후 확인 조회(schedule 목록) 전송 오류\").to.not.be.ok;",
+                  "            pm.expect(res.code).to.eql(200);",
+                  "            pm.expect(body, \"목록 응답이 배열이 아님\").to.be.an(\"array\");",
+                  "            pm.expect(remain.length).to.eql(0);",
+                  "        });",
+                  "    });",
+                  "}, 300);   // 본 요청과의 간격(호출 빈도 상한)"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SC-04-01 [강의실 조회] 라이브 강의실 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/lectureroom/get/?lectureroom_id=7",
+            "description": "시나리오 ID: TS-SC-04 / 요구사항 ID: FR-SC-04 / 유형: 정상 / 권한: 교육자 / 우선순위: P1\n요약: 교육자 로그인 상태에서 라이브 강의실 정보 조회(lectureroom_id=7) 시, 200과 lectureroom 객체 반환 검증\n사전조건: 교육자 계정 로그인. 강의실 7 존재\n테스트 절차:\n1. 교육자 로그인 \n2. GET /org/{org}/course/lectureroom/get/?lectureroom_id=7 호출 \n3. status=200, _result.status=ok, lectureroom 객체 확인\n기대 Status: 200 + _result ok\nResponse 검증: lectureroom 객체\n기대 결과: 강의실 정보 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 라이브 강의실 조회 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.lectureroom).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03_BD_게시판",
+      "item": [
+        {
+          "name": "TC-BD-01-01 [게시글 목록] 게시글 목록(클래스룸)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{classroom_api}}/classroom/{{target_classroom_id}}/article?filter_title=%25%25&sort_by=created_desc&skip=0&count=10",
+            "description": "시나리오 ID: TS-BD-01 / 요구사항 ID: FR-BD-01 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 클래스룸 게시글 목록 조회 시, 200과 게시글 배열(제목·작성자·작성일) 반환 검증\n사전조건: 학습자 계정 로그인. 클래스룸에 게시글 1건 이상 존재\n테스트 절차:\n1. 학습자 로그인 → access_token 확보\n2. GET /classroom/{classroom_id}/article?filter_title=%%&sort_by=created_desc&skip=0&count=10 호출 (classroom-api)\n3. status=200, 응답 배열의 각 항목에 title·user·created 필드 포함 확인\n기대 Status: 200\nResponse 검증: 게시글 배열, 항목에 title·user·created\n기대 결과: 게시글 목록 조회 성공 (실측 확정)\n구현 메모: 클래스룸 게시판 목록은 classroom-api. 과목 게시판(board/list)은 731에 게시판 0개 — 별개 기능"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 게시글 목록 조회(항목 필드 확인) [실측]\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const b = pm.response.json();",
+                  "    pm.expect(b).to.be.an(\"array\");",
+                  "    if (b.length) pm.expect(b[0]).to.include.keys(\"title\",\"user\",\"created\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-03-01 [게시글 작성] 게시글 작성(학습자·더미)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/edit/",
+            "description": "시나리오 ID: TS-BD-03 / 요구사항 ID: FR-BD-03 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 게시글 작성 시, 200과 board_article_id 반환 검증 (작성 후 삭제 복구)\n사전조건: 학습자 계정 로그인. 더미 제목(__tc_article__) 사용, 테스트 후 삭제\n테스트 절차:\n1. 학습자 로그인\n2. POST /org/{org}/board/article/edit/ 에 title·content 담아 신규 게시글 생성 요청\n3. status=200/201, 응답에 생성된 게시글 ID 반환 확인\n4. 목록/조회 API(TC-BD-01-01/02)로 재조회해 반영 여부 확인\n기대 Status: 200/201\nResponse 검증: board_article_id 반환\n기대 결과: 게시글 작성 성공·복구 완료 (실측 확정)\n구현 메모: 클래스룸 게시판 글 작성 = article/edit + classroom_id (board_id 아님 — 실측)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "classroom_id",
+                  "value": "{{target_classroom_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_article__",
+                  "type": "text"
+                },
+                {
+                  "key": "content",
+                  "value": "테스트",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 학습자 게시글 작성 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.board_article_id).to.exist;",
+                  "});",
+                  "pm.environment.set(\"art_normal\", pm.response.json().board_article_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-02-01 [게시글 상세] 게시글 읽기",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/get/?board_article_id={{art_normal}}",
+            "description": "시나리오 ID: TS-BD-02 / 요구사항 ID: FR-BD-02 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 게시글 단건 조회 시, 200과 상세(title·content·user) 반환 검증\n사전조건: BD-03-01에서 작성한 더미 글의 board_article_id 확보\"\n테스트 절차:\n1. 학습자 로그인 후 목록 조회로 article_id 확보\n2. \"GET {{org_api}}/org/academy/board/article/get/?board_article_id={id}\n3. status=200, _result.status='ok', board_article.title·content·user 확인\n기대 Status: 200\nResponse 검증: board_article 상세(title·content·user)\n기대 결과: 게시글 상세 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 게시글 단건 조회 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.board_article).to.include.keys(\"title\",\"content\",\"user\");",
+                  "    pm.expect(b.board_article.title).to.eql(\"__tc_article__\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-04-01 [비밀글 작성] 비밀글 작성(학습자·더미)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/edit/",
+            "description": "시나리오 ID: TS-BD-04 / 요구사항 ID: FR-BD-04 / 유형: 정상 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 비밀글(is_secret=true) 작성 시, 200과 board_article_id 반환 및 is_secret 저장 검증\n사전조건: 학습자 계정 로그인. 더미 제목 사용, 테스트 후 삭제\n테스트 절차:\n1. 학습자 로그인\n2. POST /org/{org}/board/article/edit/ 에 title·content + 비밀글 지정 파라미터 담아 요청\n3. status=200/201, 응답의 비밀글 플래그 값 확인\n기대 Status: 200/201\nResponse 검증: board_article_id 반환, is_secret 저장\n기대 결과: 비밀글 작성 성공 (실측 확정)\n비고: 비밀글 파라미터 F12 확정 전",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "classroom_id",
+                  "value": "{{target_classroom_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_secret__",
+                  "type": "text"
+                },
+                {
+                  "key": "content",
+                  "value": "테스트",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret",
+                  "value": "True",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 학습자 비밀글 작성\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.board_article_id).to.exist;",
+                  "});",
+                  "pm.environment.set(\"art_secret\", pm.response.json().board_article_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-05-01 [작성자 열람] 본인 비밀글 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/get/?board_article_id={{art_secret}}",
+            "description": "시나리오 ID: TS-BD-05 / 요구사항 ID: FR-BD-05 / 유형: 정상 / 권한: 학습자(작성자 본인) / 우선순위: P1\n요약: 비밀글 작성자 본인이 해당 비밀글 조회 시, 200과 게시글 내용 반환 검증\n사전조건: BD-04-01에서 본인이 작성한 비밀글 존재\n테스트 절차:\n1. 학습자(작성자 본인) 로그인\n2. Authorization 헤더 포함해 GET /org/{org}/board/get/(article_id) 호출\n3. status=200, 본문 등 상세 정보 정상 반환 확인\n기대 Status: 200\nResponse 검증: content 반환\n기대 결과: 본인 비밀글 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 작성자 본인이 비밀글 조회\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.board_article.is_secret, \"is_secret 저장 확인\").to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-06-01 [교육자 열람] 교육자의 비밀글 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/get/?board_article_id={{art_secret}}",
+            "description": "시나리오 ID: TS-BD-06 / 요구사항 ID: FR-BD-05 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자가 학습자의 비밀글 조회 시, 200과 게시글 내용 반환 검증\n사전조건: 학습자가 작성한 비밀글 존재. 교육자 계정 로그인\n테스트 절차:\n1. 교육자 로그인\n2. Authorization 헤더 포함해 GET /org/{org}/board/get/(학습자 작성 비밀글 article_id) 호출\n3. status=200, 본문 등 상세 정보 정상 반환 확인\n기대 Status: 200\nResponse 검증: content 반환\n기대 결과: 교육자의 비밀글 열람 성공 (실측 확인)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자가 학습자 비밀글 조회\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-08-01 [본인 글 수정] 본인 글 수정",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/edit/",
+            "description": "시나리오 ID: TS-BD-07 / 요구사항 ID: FR-BD-06 / 유형: 정상 / 권한: 학습자(작성자 본인) / 우선순위: P1\n요약: 학습자가 본인이 작성한 게시글 수정 시, 200과 재조회로 수정 반영 검증\n사전조건: BD-03-01에서 본인이 작성한 더미 게시글 존재\n테스트 절차:\n1. 작성자 본인 로그인\n2. POST /org/{org}/board/article/edit/ 에 article_id + 수정할 title/content 담아 요청\n3. status=200 확인\n4. 재조회로 수정된 필드 반영 확인\n기대 Status: 200\nResponse 검증: _result.status=='ok'\n기대 결과: 본인 글 수정 성공 (실측 확정)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_article_id",
+                  "value": "{{art_normal}}",
+                  "type": "text"
+                },
+                {
+                  "key": "classroom_id",
+                  "value": "{{target_classroom_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_article_v2__",
+                  "type": "text"
+                },
+                {
+                  "key": "content",
+                  "value": "수정",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 학습자 본인 글 수정\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});",
+                  "",
+                  "// ── 사후 확인 (구 \"TC-BD-08-01b [사후 확인] 수정 확인\"): 별도 요청으로 두면 리포트·시트가 같은 TC를 두 번 세므로 이 요청 안에서 재조회한다 ──",
+                  "setTimeout(function () {",
+                  "    // 본 요청에서 중단된 경우 지연 예약된 사후 조회도 보내지 않는다.",
+                  "    if (pm.environment.get(\"KILL_SWITCH_TRIPPED\") || (pm.response && pm.response.code >= 500)) return;",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get(\"org_api\") + \"/org/academy/board/article/get/?board_article_id=\" + pm.environment.get(\"art_normal\"),",
+                  "        method: \"GET\",",
+                  "        header: { \"Authorization\": \"Bearer \" + pm.environment.get(\"student_token\"), \"x-elice-org-name-short\": \"academy\" }",
+                  "    }, function (err, res) {",
+                  "        // 추가 요청은 컬렉션 공통 Test의 pm.response에 포함되지 않으므로 직접 검사한다.",
+                  "        if (res && res.responseTime > 3000) {",
+                  "            console.warn(\"[경고] 사후 확인 응답 \" + res.responseTime + \"ms — \" + pm.info.requestName);",
+                  "        }",
+                  "        if (res && res.code >= 500) {",
+                  "            pm.environment.set(\"KILL_SWITCH_TRIPPED\", String(res.code));",
+                  "            pm.execution.setNextRequest(null);",
+                  "            console.error(\"[KILL SWITCH] 사후 확인 HTTP \" + res.code + \" — \" + pm.info.requestName);",
+                  "            pm.test(\"사후 확인 — 서버 5xx 없음\", function () {",
+                  "                pm.expect(res.code).to.be.below(500);",
+                  "            });",
+                  "            return;",
+                  "        }",
+                  "        let body = null;",
+                  "        try { body = res.json(); } catch (e) { body = null; }",
+                  "        pm.test(\"반영 — 수정한 글 제목이 재조회에 나타남\", function () {",
+                  "            pm.expect(err, \"사후 확인 조회(article/get) 전송 오류\").to.not.be.ok;",
+                  "            pm.expect(res.code).to.eql(200);",
+                  "            pm.expect(body._result.status).to.eql(\"ok\");",
+                  "            pm.expect(body.board_article.title).to.eql(\"__tc_article_v2__\");",
+                  "        });",
+                  "    });",
+                  "}, 300);   // 본 요청과의 간격(호출 빈도 상한)"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H1 교육자 글 작성(BD-13-01 대상)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/edit/",
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "classroom_id",
+                  "value": "{{target_classroom_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_edu_m__",
+                  "type": "text"
+                },
+                {
+                  "key": "content",
+                  "value": "테스트",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test(\"준비 — H1 교육자 글 작성(BD-13-01 대상)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});",
+                  "pm.environment.set(\"art_m\", pm.response.json().board_article_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-13-01 [타인 글 보호] 학습자→타인 글 수정 차단",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/edit/",
+            "description": "시나리오 ID: TS-BD-13 / 요구사항 ID: FR-BD-11 / 유형: 권한 / 권한: 학습자(작성자 아님) / 우선순위: P1\n요약: 학습자가 본인 글이 아닌 게시글 수정 시도 시, 차단(fail) 검증\n사전조건: 타인(교육자 등)이 작성한 게시글 존재. 학습자 로그인\n테스트 절차:\n1. 작성자가 아닌 학습자 로그인\n2. POST /org/{org}/board/article/edit/ (form-data: board_article_id=타인 글, title=__hack__, content=x) 호출\n3. status=200, _result.status='fail' 확인 (실측 fail_code: resource_not_found — org-api 규약상 HTTP 403 아님)\n4. 원본 재조회로 제목 미변경 확인\n기대 Status: 200 + fail(차단)\nResponse 검증: _result.status=='fail' (실측: resource_not_found)\n기대 결과: 타인 글 수정 차단 (실측 확정)\n구현 메모: 학습자는 타인 글 수정 불가. 실측: fail_code=resource_not_found(차단)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_article_id",
+                  "value": "{{art_m}}",
+                  "type": "text"
+                },
+                {
+                  "key": "classroom_id",
+                  "value": "{{target_classroom_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__hack__",
+                  "type": "text"
+                },
+                {
+                  "key": "content",
+                  "value": "x",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 resource_not_found — 학습자→타인 글 수정 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status, \"차단되어야 함 — ok면 접근제어 결함\").to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code, \"실측 차단 코드(resource_not_found)와 다름 — 명세 변경 여부 확인\").to.eql(\"resource_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H1a 원본 미변경 확인(BD-13-01 사후)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/get/?board_article_id={{art_m}}",
+            "description": "BD-13-01 절차 4 — 원본 재조회로 미변경 확인"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"원복 확인 — 교육자 글 제목이 원본 그대로\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.board_article.title).to.eql(\"__tc_edu_m__\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H1b 교육자 글 정리",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/delete/",
+            "description": "BD-13-01 대상 글 삭제(정리)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_article_id",
+                  "value": "{{art_m}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"원복 — 교육자 더미 글 삭제(글이 남아 있어야 함)\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-16-01 [역할 권한 차단] 학습자→공지 작성 차단",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/notice/add/",
+            "description": "시나리오 ID: TS-BD-14 / 요구사항 ID: FR-BD-12 / 유형: 권한 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 토큰으로 교육자 전용 공지 작성 API 호출 시, 200+fail_code=insufficient_permission 거부 검증\n사전조건: 학습자 로그인. 과목 731\n테스트 절차:\n1. 학습자 로그인(교육자 아님)\n2. POST /org/{org}/course/notice/add/ (form-data: course_id=731, message=__tc_perm__) 호출\n3. status=200, _result.status='fail', fail_code=insufficient_permission 확인\n기대 Status: 200 + fail_code\nResponse 검증: fail_code == 'insufficient_permission'\n기대 결과: 공지 작성 차단 (실측 확정)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "message",
+                  "value": "__tc_perm__",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 insufficient_permission — 학습자→공지 작성\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"insufficient_permission\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-11-01 [공지 작성] 교육자 공지 작성(더미)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/notice/add/",
+            "description": "시나리오 ID: TS-BD-10 / 요구사항 ID: FR-BD-09 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자가 과목 공지 작성 시, 200과 course_notice_id 반환 검증\n사전조건: 교육자 계정 로그인. 과목 731. 더미 메시지 사용\n테스트 절차:\n1. 교육자 로그인\n2. POST /org/{org}/course/notice/add/ (form-data: course_id=731, message=__tc_notice__) 호출\n3. status=200, _result.status='ok', course_notice_id 반환 확인\n4. 정리: POST /org/{org}/course/notice/delete/ (course_notice_id)로 더미 공지 삭제(복구)\n기대 Status: 200 + _result ok\nResponse 검증: course_notice_id 반환\n기대 결과: 공지 작성 성공·복구 완료 (실측 확정)\n구현 메모: 공지 삭제 API 없음 — 더미 문구로 표시",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "message",
+                  "value": "__tc_notice__ (QA 테스트, 무시하세요)",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 공지 작성\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.course_notice_id).to.exist;",
+                  "});",
+                  "pm.environment.set(\"tc_notice_id\", pm.response.json().course_notice_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H5 더미 공지 삭제(복구)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/notice/delete/",
+            "description": "BD-11-01 정리 — course/notice/delete/는 명세에 없고 시트 DC-05-01 비고의 실측(200 ok) 근거. 파라미터명 course_notice_id는 첫 실행에서 확인 필요",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_notice_id",
+                  "value": "{{tc_notice_id}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"원복 — 더미 공지 삭제\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-09-01 [본인 글 삭제] 본인 글 삭제(복구)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/delete/",
+            "description": "시나리오 ID: TS-BD-08 / 요구사항 ID: FR-BD-07 / 유형: 정상 / 권한: 학습자(작성자 본인) / 우선순위: P1\n요약: 학습자가 본인이 작성한 게시글 삭제 시, 200과 재조회로 삭제 확인 검증\n사전조건: 본인이 작성한 더미 게시글 존재\n테스트 절차:\n1. 작성자 본인 로그인\n2. POST {{org_api}}/org/academy/board/article/delete/ (board_article_id=본인 글)\n3. 200 ok\n4. 단건 조회 시 fail_code=resource_not_found 확인\n기대 Status: 200\nResponse 검증: _result.status=='ok'\n기대 결과: 본인 글 삭제 성공 (실측 확정)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_article_id",
+                  "value": "{{art_normal}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 학습자 본인 글 삭제 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H2 삭제 확인(resource_not_found)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/get/?board_article_id={{art_normal}}",
+            "description": "클래스룸 목록은 반영 지연(수 초)이 있어 article/get으로 검증"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"원복 확인 — 삭제한 글이 resource_not_found\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"resource_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H3 비밀글 삭제(복구)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/delete/",
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_article_id",
+                  "value": "{{art_secret}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test(\"준비 — H3 비밀글 삭제(복구)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H4 학습자 글 작성(BD-10-01 대상)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/edit/",
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "classroom_id",
+                  "value": "{{target_classroom_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "__tc_target__",
+                  "type": "text"
+                },
+                {
+                  "key": "content",
+                  "value": "테스트",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test(\"준비 — H4 학습자 글 작성(BD-10-01 대상)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});",
+                  "pm.environment.set(\"art_target\", pm.response.json().board_article_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-10-01 [교육자 삭제] 교육자→학습자 글 삭제",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/delete/",
+            "description": "시나리오 ID: TS-BD-09 / 요구사항 ID: FR-BD-08 / 유형: 정상 / 권한: 교육자 / 우선순위: P2\n요약: 교육자가 학습자가 작성한 게시글 삭제 시, 200과 삭제 확인 검증\n사전조건: 학습자가 작성한 더미 게시글 존재. 교육자 계정 로그인\n테스트 절차:\n1. 교육자 로그인\n2. 교육자 토큰으로 POST .../board/article/delete/ (board_article_id=학습자 더미 글)\n3. status=200 확인\n4. 목록/단건 조회로 해당 글 미반환 확인\n기대 Status: 200\nResponse 검증: _result.status=='ok'\n기대 결과: 교육자의 타인 글 삭제 성공 = 정당 권한 (실측 확정)\n구현 메모: 교육자가 학습자 글 삭제 = 정당한 권한. art_target도 이 요청으로 정리됨",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_article_id",
+                  "value": "{{art_target}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자가 학습자 글 삭제\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H4b 삭제 확인(BD-10-01 사후)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/article/get/?board_article_id={{art_target}}",
+            "description": "BD-10-01 절차 4 — 재조회로 미반환 확인"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"반영 — 삭제한 글이 재조회에서 사라짐\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"resource_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H6 더미 게시판 생성(BD-12-01/17-01 준비)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/edit/",
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "__tc_board__",
+                  "type": "text"
+                },
+                {
+                  "key": "viewable_course_role",
+                  "value": "45",
+                  "type": "text"
+                },
+                {
+                  "key": "postable_course_role",
+                  "value": "45",
+                  "type": "text"
+                },
+                {
+                  "key": "commentable_course_role",
+                  "value": "45",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret_default",
+                  "value": "False",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret_force",
+                  "value": "False",
+                  "type": "text"
+                },
+                {
+                  "key": "is_subscribed_default",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test(\"준비 — H6 더미 게시판 생성(BD-12-01/17-01 준비)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});",
+                  "pm.environment.set(\"tc_board_id\", pm.response.json().board_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-12-01 [게시판 설정] 게시판 설정 편집(교육자)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/edit/",
+            "description": "시나리오 ID: TS-BD-11 / 요구사항 ID: FR-BD-10 / 유형: 정상 / 권한: 교육자 / 우선순위: P3\n요약: 교육자가 게시판 설정(권한 등) 편집 시, 200과 board_id 반환 검증 (더미 게시판 생성→편집→삭제)\n사전조건: 교육자 계정 로그인. 과목 731. 더미 게시판(__tc_board__) 생성 후 테스트, 종료 시 삭제\n테스트 절차:\n1. 교육자 로그인, 더미 게시판(__tc_board__) 생성해 board_id 확보\n2. POST /org/{org}/board/edit/ (form-data: board_id, course_id=731, name, viewable_course_role=45, postable_course_role=60, commentable_course_role=45, is_secret_default=False, is_secret_force=False, is_subscribed_default=False) 호출\n3. status=200, _result.status='ok' 확인\n4. 종료 시 board/delete/로 더미 게시판 삭제(복구)\n기대 Status: 200\nResponse 검증: board_id 반환\n기대 결과: 게시판 설정 편집 성공·복구 (실측 확정)\n구현 메모: postable_course_role 변경. board/edit로 설정 편집(실측 확정)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_id",
+                  "value": "{{tc_board_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "__tc_board__",
+                  "type": "text"
+                },
+                {
+                  "key": "viewable_course_role",
+                  "value": "45",
+                  "type": "text"
+                },
+                {
+                  "key": "postable_course_role",
+                  "value": "60",
+                  "type": "text"
+                },
+                {
+                  "key": "commentable_course_role",
+                  "value": "45",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret_default",
+                  "value": "False",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret_force",
+                  "value": "False",
+                  "type": "text"
+                },
+                {
+                  "key": "is_subscribed_default",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 교육자 게시판 설정 편집\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b.board_id).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-BD-17-01 [역할 권한 차단] 학습자→게시판 설정 차단",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/edit/",
+            "description": "시나리오 ID: TS-BD-14 / 요구사항 ID: FR-BD-12 / 유형: 권한 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 토큰으로 게시판 설정 편집 API 호출 시, 200+fail_code=insufficient_permission 거부 검증\n사전조건: 학습자 로그인. BD-12-01와 동일한 유효 form-data(더미 게시판 board_id)\n테스트 절차:\n1. 학습자 로그인(교육자 아님)\n2. POST /org/{org}/board/edit/ (BD-12-01와 동일 form-data, board_id=더미 게시판) 호출\n3. status=200, _result.status='fail', fail_code=insufficient_permission 확인\n기대 Status: 200 + fail_code\nResponse 검증: fail_code == 'insufficient_permission'\n기대 결과: 게시판 설정 편집 차단 (실측 확정)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_id",
+                  "value": "{{tc_board_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "course_id",
+                  "value": "731",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "__tc_board__",
+                  "type": "text"
+                },
+                {
+                  "key": "viewable_course_role",
+                  "value": "45",
+                  "type": "text"
+                },
+                {
+                  "key": "postable_course_role",
+                  "value": "60",
+                  "type": "text"
+                },
+                {
+                  "key": "commentable_course_role",
+                  "value": "45",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret_default",
+                  "value": "False",
+                  "type": "text"
+                },
+                {
+                  "key": "is_secret_force",
+                  "value": "False",
+                  "type": "text"
+                },
+                {
+                  "key": "is_subscribed_default",
+                  "value": "False",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 insufficient_permission — 학습자→게시판 설정 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"insufficient_permission\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "H7 더미 게시판 삭제(복구)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/board/delete/",
+            "description": "board/delete 실측 확인 — 더미 게시판 정리",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "board_id",
+                  "value": "{{tc_board_id}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test(\"준비 — H7 더미 게시판 삭제(복구)\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04_EX_시험",
+      "item": [
+        {
+          "name": "TC-EX-01-01 [시험 과목 조회] 시험 과목 조회",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/get/?course_id=731",
+            "description": "시나리오 ID: TS-EX-01 / 요구사항 ID: FR-EX-01 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 학습자 로그인 상태에서 시험 과목 정보 조회(course_id=731) 시, 200과 course 객체 반환 검증\n사전조건: 학습자 계정 로그인. 과목 731 수강 상태\n테스트 절차:\n1. 학습자 로그인\n2. GET /org/{org}/course/get/?course_id=731 호출\n3. status=200, course·course_sections 확인\n기대 Status: 200 + _result ok\nResponse 검증: course·course_sections·course_role\n기대 결과: 시험 과목 조회 성공 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 시험 과목(731) 조회 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(b).to.include.keys(\"course\",\"course_sections\",\"course_role\");",
+                  "    pm.expect(b.course.id).to.eql(731);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-EX-01-02 [미존재 ID 방어] 없는 과목 resource_not_found",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/course/get/?course_id=99999999",
+            "description": "시나리오 ID: TS-EX-01 / 요구사항 ID: FR-EX-01 / 유형: 예외 / 권한: 학습자 / 우선순위: P2\n요약: 학습자 로그인 상태에서 존재하지 않는 과목(99999999) 조회 시, 200+fail_code=resource_not_found 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 학습자 로그인\n2. course_id=99999999로 GET 호출\n3. status=200 + fail_code=resource_not_found 확인\n기대 Status: 200 + fail_code\nResponse 검증: fail_code == 'resource_not_found'\n기대 결과: 미존재 과목 조회 거부 (실측 확정)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 resource_not_found — 없는 과목으로 시험 조회 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"resource_not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "S3 시험1585 설정 확인(EX-05-01 전제: 셀프 재응시 허용 ON)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/lecture/get/?lecture_id=1585",
+            "description": "EX-05-01 전제(자가 재응시 허용 ON) 확인. 부하테스트(part2 시험 사이클의 reset/by_self)와 UI 4번(테스트 재응시)도 같은 전제를 쓴다. 꺼져 있으면 여기서 실패해 원인이 드러난다(교육자 → 과목 → 수업 목록 → 01 TEST → 공개 설정 수정하기)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "const v = b.lecture ? String(b.lecture.is_test_reset_enabled_by_student) : \"unknown\";",
+                  "pm.environment.set(\"ex1585_self_reset\", v);",
+                  "pm.test(\"준비 — 시험1585 셀프 재응시 허용 ON 확인 (현재: \" + v + \")\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "    pm.expect(v, \"01 TEST 셀프 재응시 허용이 꺼져 있음 — 교육자 설정에서 켠 뒤 재실행\").to.eql(\"true\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-EX-05-01 [재응시 설정] 자가 재응시 허용 상태 정상 동작",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/lecture/test/reset/by_self/",
+            "description": "시나리오 ID: TS-EX-05 / 요구사항 ID: FR-EX-05 / 유형: 정상 / 권한: 학습자 / 우선순위: P1\n요약: 자가 재응시 허용(ON) 상태의 학습자가 자가 재응시 호출 시 200 + _result.status=ok 반환 검증\n사전조건: 학습자 로그인. 01 TEST 셀프 재응시 허용 ON (S3에서 확인 — 부하테스트·UI 4번과 공통 전제)\n테스트 절차:\n1. POST /org/{org}/lecture/test/reset/by_self/ (lecture_id=1585) 호출\n2. status=200, _result.status='ok' 확인\n기대 Status: 200\nResponse 검증: _result.status == 'ok'\n기대 결과: 자가 재응시 허용 — 학습자 기록이 응시 전으로 초기화됨 (응시 전 상태에서 호출해도 ok, 실측 2026-09-04)\n비고: 설정 OFF일 때는 200 + fail_code=is_test_reset_enabled_by_student_not_enabled 로 거부됨 (실측 2026-09-03 확정). \npart2 exam_cycle.jmx 5단계(test/reset/by_self)와 UI-TC-04(테스트 재응시 버튼)가 같은 API를 사용.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "lecture_id",
+                  "value": "1585",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 자가 재응시 허용 상태에서 초기화 성공\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-EX-06-01 [응시 흐름 강제] 미입장 제출 차단",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{org_api}}/org/academy/user/lecture/test/stop/",
+            "description": "시나리오 ID: TS-EX-06 / 요구사항 ID: FR-EX-06 / 유형: 예외 / 권한: 학습자 / 우선순위: P1\n요약: 시험 미입장 학습자가 제출(test/stop) 호출 시, 200+fail_code=in_progress_test 거부 검증 (순서 위반 방어)\n사전조건: 학습자 계정 로그인. 시험 1585 미입장 상태\n테스트 절차:\n1. 학습자 로그인(시험 미입장)\n2. 입장 없이 POST .../test/stop/ 호출\n3. 실패(오류 코드) — 순서 위반 차단 확인\n기대 Status: 200 + fail_code\nResponse 검증: fail_code == 'in_progress_test'\n기대 결과: 미입장 제출 차단 — 순서 위반 방어 (실측 확정)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "lecture_id",
+                  "value": "1585",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"본문 in_progress_test — 미입장 상태로 제출 [실측]\", () => {",
+                  "    const b = pm.response.json();",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(b._result.status).to.eql(\"fail\");",
+                  "    pm.expect(b.fail_code).to.eql(\"in_progress_test\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-EX-03-01 [체류 기록] 체류 기록(stay)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": "{{activity_api}}/stay",
+            "description": "시나리오 ID: TS-EX-03 / 요구사항 ID: FR-EX-03 / 유형: 정상 / 권한: 학습자 / 우선순위: P3\n요약: 학습자가 시험 중 체류 기록(stay) 호출 시, 200 반환 검증\n사전조건: 학습자 계정 로그인\n테스트 절차:\n1. 시험 입장 상태\n2. POST /stay 주기 호출\n3. status=200, 체류 기록 확인\n기대 Status: 200\nResponse 검증: 200 (빈 배열)\n기대 결과: 체류 기록 성공 (실측 확정). form-data 아닌 JSON 규약\n구현 메모: activity-api /stay, JSON 규약. body에 tags 필드만 있으면 200(실측). 상태 조회성 기록이라 응시 없이도 200",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"tags\": {}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 200 — 체류 기록(stay, tags 필수) [실측]\", () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05_CH_공통",
+      "item": [
+        {
+          "name": "TC-CH-14-05 [미존재 ID 방어] 교육자 토큰으로 미존재 클래스룸 진도율 조회 시 409 model_not_found 차단 검증",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{educator_token}}"
+              },
+              {
+                "key": "x-elice-org-name-short",
+                "value": "academy"
+              }
+            ],
+            "url": {
+              "raw": "{{dashboard_api}}/student?classroom_id={{nonexistent_classroom_id}}&offset=0&count=10",
+              "host": [
+                "{{dashboard_api}}"
+              ],
+              "path": [
+                "student"
+              ],
+              "query": [
+                {
+                  "key": "classroom_id",
+                  "value": "{{nonexistent_classroom_id}}"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "count",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "시나리오 ID: TS-CH-14 / 요구사항 ID: FR-CH-13 / 유형: 예외 / 권한: 교육자\n요약: 교육자 토큰으로 미존재 클래스룸 진도율 조회 시 409 model_not_found 차단 검증\nResponse 검증: code == 'model_not_found' 이고 detail 에 Classroom 존재"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"상태 409 Conflict — 미존재 클래스룸 조회 정상 차단\", () => {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "pm.test(\"본문 model_not_found 및 detail.Classroom 검증\", () => {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res).to.be.an(\"object\");",
+                  "    pm.expect(res).to.have.property(\"code\");",
+                  "    pm.expect(res.code).to.eql(\"model_not_found\");",
+                  "    pm.expect(res).to.have.property(\"detail\");",
+                  "    pm.expect(res.detail).to.have.property(\"Classroom\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// [안전장치] 5xx 감지 시 즉시 중단 — 개발 가이드 '비상 중단 프로토콜' 대응",
+          "if (pm.response && pm.response.code >= 500) {",
+          "    console.error('=================================================');",
+          "    console.error('[KILL SWITCH] 서버 5xx 응답 감지 — 실행을 즉시 중단합니다.');",
+          "    console.error('  요청 : ' + pm.info.requestName);",
+          "    console.error('  코드 : ' + pm.response.code);",
+          "    console.error('  담당자에게 보고가 필요합니다.');",
+          "    console.error('=================================================');",
+          "    pm.environment.set('KILL_SWITCH_TRIPPED', String(pm.response.code));",
+          "    postman.setNextRequest(null);   // 남은 요청 실행 중단",
+          "}",
+          "// [안전장치] 응답 지연 경보 — 서버가 힘들어지는 징후를 조기에 알린다",
+          "if (pm.response && pm.response.responseTime > 3000) {",
+          "    console.warn('[경고] 응답 ' + pm.response.responseTime + 'ms — ' + pm.info.requestName);",
+          "}"
+        ]
+      }
+    }
+  ]
+}

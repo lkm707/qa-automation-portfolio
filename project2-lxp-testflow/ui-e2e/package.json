@@ -1,0 +1,25 @@
+{
+  "name": "testflow-ui-automation",
+  "version": "1.0.0",
+  "description": "엘리스 LXP 핵심 사용자 흐름 Playwright UI E2E 자동화 (시나리오 1~7)",
+  "scripts": {
+    "test": "playwright test",
+    "test:s1": "playwright test --grep @S1",
+    "test:s2": "playwright test --grep @S2",
+    "test:s3": "playwright test --grep @S3",
+    "test:s4": "playwright test --grep @S4",
+    "test:s5": "playwright test --grep @S5",
+    "test:s6": "playwright test --grep @S6",
+    "test:s7": "playwright test --grep @S7",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install chromium"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "dotenv": "^17.4.2"
+  }
+}
