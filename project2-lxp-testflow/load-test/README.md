@@ -6,7 +6,7 @@
 교육 과정이 정한 부하 하드리밋과 과제 요구사항(30명 동시 접속에서 에러율 1% 미만, 평균 1초 이내 목표)을 따른다.
 
 ## 규칙
-- 최대 30명, 한 번에 30 금지. 플랜이 `min(30, users)`로 캡하고 스크립트는 1\~30만 받는다.
+- 최대 30명. 처음부터 30명으로 시작하지 않고 5→10→20→30명 순서로 올린다. 플랜이 `min(30, users)`로 캡하고 스크립트는 1\~30만 받는다.
 - 요청마다 3\~5초 대기, Loop 3회, Ramp-up 90\~120초(기본 90). 단계당 약 3분.
 - 오류 발생 시 Thread Group의 `Stop Test Now`로 전체를 중단한다(HTTP 오류·타임아웃·assertion 실패 포함). 별도 Kill Switch도 5xx 또는 elapsed/Latency 60초 이상 응답에서 전체를 중단한다. 타임아웃 connect 5초 / response 60초, 재시도 없음.
 - 팀당 1명이 지정 슬롯에 수동 실행한다. CI에는 넣지 않는다.
@@ -19,7 +19,7 @@
 
 ## 시나리오
 `course/get → test/enter → test/start → quiz/response/add → test/stop → test/reset/by_self` × Loop 3.
-교육 과정 가이드의 4단계 흐름에 start를 넣은 것은 start 없이 stop을 호출하면 `in_progress_test`로 실패하기 때문이다(dev 실측).
+교육 과정 가이드의 4단계 흐름(course/get → test/enter → test/stop → test/reset/by_self)에 test/start와 quiz/response/add를 넣었다. start 없이 stop을 호출하면 `in_progress_test`로 실패하고(dev 실측), 답안 등록은 실제 응시처럼 답을 내기 위해서다.
 모든 단계는 `_result.status == ok`로 검증한다. org-api는 실패도 HTTP 200이라 상태코드만으로는 판정할 수 없다.
 
 ```

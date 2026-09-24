@@ -80,7 +80,7 @@ fi
 echo "▶ 통합 Allure 리포트 생성 ($found개 컬렉션)"
 ./scripts/report.sh
 
-# Kill Switch 로 중단된 실행은 리포트는 남기되 실패 코드로 끝낸다 (CI 가 정상 완료로 오해하지 않도록)
+# Kill Switch 로 중단된 실행은 리포트는 남기되 실패 코드(2)로 끝낸다 (호출하는 쪽이 정상 완료와 구분하도록. 팀 Jenkinsfile 은 `|| true` 로 호출해 빌드 상태에는 반영되지 않았다)
 if [ "${tripped:-0}" = 1 ]; then
   echo "🛑 5xx Kill Switch 로 중단된 실행입니다. 리포트는 실행된 부분까지만 담고 있습니다."
   exit 2
